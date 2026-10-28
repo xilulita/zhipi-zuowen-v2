@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+
+# 打包产物（体积大，走 GitHub Release 分发）
+dist/
+out/
+*.blockmap
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 本地环境与密钥
+.env
+.env.local
+*.log
+
+# 测试、走查与临时产物
+qa/
+*.tmp
+.playwright-mcp/
+*.artifact.json
+
+# 开发过程中的临时拆分文件（内容已合并进主文件）
+assets/*.part.js
+assets/*.part.html
