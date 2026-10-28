@@ -72,6 +72,11 @@
       + ".sheet-head .sh-tag{font-size:10px;color:#8d8477;flex:0 0 auto}"
       + "@media print{body{background:#fff}"
       +   ".doc{border:0;border-radius:0;width:auto}}"
+      /* 窄屏（手机）：整体等比缩放，保持三栏结构不散，可上下滑动读完整 */
+      + "@media screen and (max-width:" + (PAGE_W + 20) + "px){"
+      +   "body{background:#fffdf9;overflow-x:hidden}"
+      +   ".doc{transform-origin:top left;border-radius:0;border:0}"
+      + "}"
       + "@page{margin:10mm}";
   }
 
@@ -394,10 +399,11 @@
     parts.push(polishedPage(res));
 
     return "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">" +
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
       "<title>" + esc(res.title || "作文") + " · 智批作文报告</title>" +
       "<style>" + baseCss() + "</style></head><body>" +
       /* 全部内容放进一个 .doc 容器，连续展示，不分页 */
-      '<div class="doc">' +
+      '<div id="docWrap"><div class="doc">' +
         '<header class="doc-head">' +
           '<h1>作文批改报告</h1>' +
           '<div class="doc-meta">' + [
@@ -407,7 +413,7 @@
           ].filter(Boolean).join("　") + "</div>" +
         "</header>" +
         parts.join(NL) +
-      "</div>" +
+      "</div></div>" +
       /* 打开后自动排一次版：卡片防重叠 + 页面高度贴合内容 */
       "<scr" + "ipt>(function(){function fix(){" +
       "document.querySelectorAll('.eboard').forEach(function(bd){" +
@@ -446,8 +452,34 @@
         "if(sheet){sheet.style.minHeight='';sheet.style.height=H+'px';}" +
         "bd.style.minHeight=Math.max(H,maxCol)+'px';" +
       "});" +
-    "}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',fix);}else{fix();}" +
-    "window.addEventListener('load',fix);})();</scr" + "ipt>" +
+    "}" +
+    /* 窄屏等比缩放：按视口宽算比例，缩放在 .doc 上，外层占位避免底部留白过大 */
+    "function fitMobile(){" +
+      "var doc=document.querySelector('.doc');if(!doc)return;" +
+      "var vw=document.documentElement.clientWidth||window.innerWidth;" +
+      /* 先复位再量，避免重复调用时读到缩放后的尺寸 */
+      "doc.style.transform='none';" +
+      "var wrap0=document.getElementById('docWrap');" +
+      "if(wrap0){wrap0.style.height='auto';}" +
+      "var W=doc.offsetWidth;" +
+      "var rawH=doc.scrollHeight;" +
+      "var wrap=document.getElementById('docWrap');" +
+    "if(vw>0&&W>vw){" +
+        "var k=vw/(W+2);" +
+        "doc.style.transformOrigin='top left';" +
+        "doc.style.transform='scale('+k+')';" +
+        "if(wrap){" +
+          "wrap.style.height=(rawH*k)+'px';" +
+          "wrap.style.overflow='visible';" +
+        "}" +
+      "}else{" +
+        "doc.style.transform='none';" +
+        "if(wrap){wrap.style.height='auto';wrap.style.overflow='visible';}" +
+      "}" +
+    "}" +
+    "if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){fix();fitMobile();});}else{fix();fitMobile();}" +
+    "window.addEventListener('load',function(){fix();fitMobile();});" +
+    "window.addEventListener('resize',fitMobile);})();</scr" + "ipt>" +
     "</body></html>";
   }
 
