@@ -895,16 +895,19 @@
 .thumb:hover .del{opacity:1}
 .thumb .del:hover{background:var(--ann-red)}
 
+/* 底部次要操作：添加下一份 / 历史批改 并排两列 */
+.footer-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
 .btn-secondary{
-  display:flex;align-items:center;justify-content:center;gap:5px;width:100%;
-  margin-top:7px;padding:8px 10px;border-radius:7px;border:1px solid #ddd5c4;
-  background:#fffdf8;color:var(--ink-2);font-size:11.5px;letter-spacing:.08em;transition:.16s;
+  display:flex;align-items:center;justify-content:center;gap:4px;
+  width:100%;min-width:0;padding:8px 8px;border-radius:7px;border:1px solid #ddd5c4;
+  background:#fffdf8;color:var(--ink-2);font-size:11px;letter-spacing:.02em;transition:.16s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
+.btn-secondary.btn-plain{background:#fff;color:#8b8273}
 .btn-secondary svg{width:11px;height:11px;color:var(--accent)}
 .btn-secondary:hover{border-color:#c2a894;background:#fffaf2;color:var(--accent);transform:translateY(-1px)}
 .btn-secondary:active{transform:none}
 .footer-actions{flex-wrap:nowrap;gap:4px}
-.footer-actions .btn-ghost{font-size:10px;padding:6px 2px}
 
 /* 配置栏引导语 */
 .acc-foot-link{font-size:9.5px;color:#a9a293;margin-top:12px;display:flex;align-items:center;gap:2px;flex-wrap:wrap}
@@ -945,13 +948,10 @@
 .hist-badge{font-size:8.5px;padding:1px 6px;border-radius:20px;background:#f2ede2;color:#8a7043;border:1px solid #e8dfcc}
 
 /* 底部次入口：字号与点击区域更从容 */
-.footer-actions{gap:6px;margin-top:8px}
-.footer-actions .btn-ghost{
-  font-size:10.5px;padding:7px 4px;letter-spacing:.02em;border-radius:6px;
-  border:1px solid transparent;color:#8b8273;
-}
-.footer-actions .btn-ghost:hover{background:#fffdf8;border-color:var(--line);color:var(--ink-2)}
-#nextEssayBtn{letter-spacing:.1em}
+#nextEssayBtn{letter-spacing:.02em}
+.footer-row .btn-secondary svg{width:11px;height:11px;flex:0 0 auto}
+.footer-row .btn-secondary:hover{border-color:#c2a894;background:#fffaf2;color:var(--accent);transform:translateY(-1px)}
+.footer-row .btn-secondary:active{transform:none}
 
 /* ============================================================
    批改计时器

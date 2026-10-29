@@ -887,7 +887,10 @@ window.ZP = window.ZP || {};
       "2) 补足细节与五感描写，删掉空泛议论，让画面更具体；",
       "3) 字数严格落在 " + g.words[0] + "-" + g.words[1] + " 字之间，分 4-6 段；",
       "4) 语言符合" + g.name + "水准，不生硬、不堆砌辞藻；",
-      '5) 只输出 JSON：{"title":"标题","paras":["第一段","第二段"]}',
+      "5) 改写时实际用到了哪些润色手法，逐条写出来：每条给出手法名称、原文片段、润色后片段，以及一句话说明这个手法在这篇里起到了什么作用；",
+      "   常见手法可参考但不限于：细节放大、动作分解、五感描写、心理补白、句式变换、虚实结合、画面聚焦、时间拉长、对比映衬、留白收束。",
+      "   手法必须是你真的用到了的，不要罗列没用到的；数量 4-6 条，按在文中出现的先后排序。",
+      '6) 只输出 JSON：{"title":"标题","paras":["第一段","第二段"],"techniques":[{"name":"手法名称","before":"原文片段","after":"润色后片段","effect":"这个手法在本篇的作用，30字内"}]}',
       "",
       "【学生原文】",
       src
@@ -912,9 +915,26 @@ window.ZP = window.ZP || {};
     return {
       title: String(d.title || norm.title || "升格范文"),
       words: ZP.countChars(paras.join("")),
-      paras: paras
+      paras: paras,
+      techniques: normalizeTechniques(d.techniques)
     };
   };
+
+  /* 润色手法：模型对照原文与润色稿提炼，逐条带原句 / 润色句对照 */
+  function normalizeTechniques(list) {
+    if (!Array.isArray(list)) return [];
+    return list.map(function (t) {
+      if (!t || typeof t !== "object") return null;
+      var nm = String(t.name || "").trim();
+      if (!nm) return null;
+      return {
+        name: nm.slice(0, 20),
+        before: String(t.before || "").trim().slice(0, 120),
+        after: String(t.after || "").trim().slice(0, 160),
+        effect: String(t.effect || "").trim().slice(0, 80)
+      };
+    }).filter(Boolean).slice(0, 6);
+  }
 
   ZP.isUnsupportedImageError = function (msg) {
     var m = String(msg || "");

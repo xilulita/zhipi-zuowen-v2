@@ -51,7 +51,7 @@
     return ""
       + "*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}"
       + "body{margin:0;background:#f3f0e9;font-family:'PingFang SC','Microsoft YaHei',sans-serif;"
-      +   "color:#2b3038;font-size:13px;line-height:1.75}"
+      +   "color:#4a515c;font-size:13px;line-height:1.75}"
       /* 每页独立成块，打印时各自一页 */
       /* 不分页：所有内容放进同一张长文档，一次性连续展示 */
       + ".doc{width:" + PAGE_W + "px;margin:0 auto;background:#fffdf9;"
@@ -59,7 +59,7 @@
       +   "padding:" + L.padY + "px " + L.padX + "px}"
       /* 文档总标题 */
       + ".doc-head{margin:0 0 22px;text-align:center}"
-      + ".doc-head h1{margin:0;font-size:21px;font-weight:650;letter-spacing:.14em;color:#2b3038}"
+      + ".doc-head h1{margin:0;font-size:21px;font-weight:650;letter-spacing:.14em;color:#3f4652}"
       + ".doc-meta{margin-top:7px;font-size:11px;color:#a9a293;letter-spacing:.04em}"
       + ".sheet{width:100%;margin:0;padding:0;background:transparent;border:0}"
       /* 段落之间用分隔线隔开（原来靠分页区分） */
@@ -67,7 +67,7 @@
       /* 页眉 */
       + ".sheet-head{display:flex;align-items:flex-end;justify-content:space-between;"
       +   "gap:14px;padding-bottom:2px;margin-bottom:14px}"
-      + ".sheet-head h2{margin:0;font-size:15px;letter-spacing:.1em;color:#2b3038}"
+      + ".sheet-head h2{margin:0;font-size:15px;letter-spacing:.1em;color:#46505c}"
       + ".sheet-head .sh-sub{font-size:10.5px;color:#a9a293;letter-spacing:.04em}"
       + ".sheet-head .sh-tag{font-size:10px;color:#8d8477;flex:0 0 auto}"
       + "@media print{body{background:#fff}"
@@ -171,7 +171,7 @@
       +   "font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8px;font-weight:700;"
       +   "box-shadow:0 1px 3px rgba(20,22,26,.25)}"
       + ".ecard-tag{font-size:9px;font-weight:600;letter-spacing:.04em;margin-bottom:3px}"
-      + ".ecard-note{color:#3f4652}"
+      + ".ecard-note{color:#4c535e}"
       + ".ecard-fix{margin-top:6px;padding:5px 7px;background:#faf7ef;border-left:2px solid #dcc9a5;"
       +   "border-radius:0 4px 4px 0;font-size:10.5px;line-height:1.55;color:#6b6047}"
       + ".ecard-fix i{display:block;font-style:normal;font-size:9px;color:#a89e8b;margin-bottom:2px}"
@@ -205,27 +205,27 @@
       + ".blk{margin-bottom:18px}"
       + ".blk:last-child{margin-bottom:0}"
       + ".blk-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}"
-      + ".blk-head h4{margin:0;font-size:11.5px;font-weight:650;letter-spacing:.1em;color:#3f3b35}"
+      + ".blk-head h4{margin:0;font-size:11.5px;font-weight:650;letter-spacing:.1em;color:#4c535e}"
       + ".blk-head i{flex:1;height:1px;background:linear-gradient(90deg,#e0d8c8,transparent)}"
       + ".blk-head .meta{font-size:9.5px;color:#8d8477;letter-spacing:.03em}"
       + ".card{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:12px 14px;"
       +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       /* 分数区 */
       + ".score-row{display:flex;align-items:center;gap:14px;margin-bottom:16px}"
-      + ".big{font-size:40px;font-weight:650;line-height:1;letter-spacing:-.02em;color:#2b3038}"
+      + ".big{font-size:40px;font-weight:650;line-height:1;letter-spacing:-.02em;color:#3a414d}"
       + ".big small{font-size:12px;color:#8d8477;font-weight:400;margin-left:2px}"
       + ".lv{padding:3px 11px;border-radius:5px;font-size:11.5px;font-weight:600;"
       +   "background:linear-gradient(180deg,#f9f0dd,#f1e2c4);color:#75501c;border:1px solid #d9c39b}"
       + ".lv.l1{background:linear-gradient(180deg,#faeae1,#f2d8c8);color:#7d321c;border-color:#dcb8a0}"
       + ".lv.l2{background:linear-gradient(180deg,#eaf0e2,#d9e4cd);color:#3d4f35;border-color:#bccdab}"
       + ".lv.l3{background:linear-gradient(180deg,#f4f2ee,#e9e5dc);color:#5f574c;border-color:#d4cdbd}"
-      + ".mini{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:10.5px;color:#6f6a60}"
+      + ".mini{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:10.5px;color:#7d8492}"
       + ".mini span{display:inline-flex;align-items:center}"
       + ".mini i{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:5px;"
       +   "box-shadow:0 0 0 1px rgba(255,255,255,.85) inset}"
       + ".radar{display:block;margin:4px auto 12px;max-width:100%}"
       /* 总评 */
-      + ".overall{white-space:pre-wrap;font-size:12.5px;line-height:1.95;color:#454b55}"
+      + ".overall{white-space:pre-wrap;font-size:12.5px;line-height:1.95;color:#4a515c}"
       /* 四维卡片 */
       + ".dim{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:10px 12px;"
       +   "margin-bottom:8px;border-left:3px solid var(--c);box-shadow:0 1px 2px rgba(60,45,25,.04)}"
@@ -235,7 +235,7 @@
       + ".dh b{margin-left:auto;font-size:12px;font-weight:650;color:var(--c)}"
       + ".dh b em{font-style:normal;font-size:9.5px;color:#a89e8b;font-weight:400}"
       + ".dh .w{color:#8d8477;font-size:10px}"
-      + ".dim p{margin:0;font-size:11.5px;color:#5d6470;line-height:1.7}"
+      + ".dim p{margin:0;font-size:11.5px;color:#6b7280;line-height:1.7}"
       + ".dim .tagline{display:inline-block;margin-top:6px;font-size:9.5px;font-weight:600;"
       +   "color:var(--c);background:#fbf9f4;border:1px solid #dfd7c6;"
       +   "padding:2px 7px;border-radius:4px;letter-spacing:.03em}"
@@ -243,15 +243,59 @@
       + ".drill{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:11px 13px;"
       +   "margin-bottom:9px;box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       + ".drill:last-child{margin-bottom:0}"
-      + ".drill h5{margin:0 0 6px;font-size:12px;color:#2b3038}"
-      + ".drill p{margin:0 0 4px;font-size:11.5px;color:#5d6470;line-height:1.75}"
+      + ".drill h5{margin:0 0 6px;font-size:12px;color:#4c535e}"
+      + ".drill p{margin:0 0 4px;font-size:11.5px;color:#6b7280;line-height:1.75}"
       + ".drill p:last-child{margin-bottom:0}"
-      + ".drill p b{color:#3f3b35;font-weight:600}"
+      + ".drill p b{color:#4c535e;font-weight:600}"
+      /* 参考写作思路：起承合三步纵向串联 */
+      + ".ol-step{display:flex;gap:10px;position:relative;padding-bottom:12px}"
+      + ".ol-step:last-child{padding-bottom:0}"
+      + ".ol-step:not(:last-child)::after{content:'';position:absolute;left:11px;top:24px;"
+      +   "bottom:0;width:1px;background:#e6dfd0}"
+      + ".ol-mark{flex:0 0 23px;height:23px;border-radius:50%;display:grid;place-items:center;"
+      +   "font-size:10px;font-weight:600;color:#8a6b3f;background:#f7efdf;"
+      +   "border:1px solid #e2d3b6;position:relative;z-index:1}"
+      + ".ol-body{flex:1;min-width:0;padding-top:1px}"
+      + ".ol-body h5{margin:0 0 3px;font-size:11.5px;font-weight:600;color:#4c535e;letter-spacing:.04em}"
+      + ".ol-body p{margin:0;font-size:11.5px;line-height:1.75;color:#6b7280}"
+      /* 具体问题与修改思路 */
+      + ".ib{background:#fdfbf6;border:1px solid #ece6d9;border-radius:9px;"
+      +   "padding:11px 13px;margin-bottom:9px}"
+      + ".ib:last-child{margin-bottom:0}"
+      + ".ib-head{display:flex;align-items:baseline;gap:7px;margin-bottom:7px}"
+      + ".ib-no{flex:0 0 auto;width:15px;height:15px;border-radius:4px;display:grid;place-items:center;"
+      +   "font-size:9px;font-weight:600;color:#a8562f;background:#fbeee6;"
+      +   "border:1px solid #eed6c6;transform:translateY(-1px)}"
+      + ".ib-head h5{margin:0;font-size:11.5px;font-weight:600;color:#4c535e;line-height:1.5}"
+      + ".ib-row{display:flex;gap:8px;font-size:11px;line-height:1.7;margin-bottom:4px}"
+      + ".ib-row:last-child{margin-bottom:0}"
+      + ".ib-k{flex:0 0 44px;font-size:9.5px;color:#a89e8b;letter-spacing:.02em;padding-top:1px}"
+      + ".ib-v{flex:1;min-width:0;color:#6b7280}"
+      + ".ib-row:last-child .ib-v{color:#5c6b4f}"
+      /* 写作小技巧 */
+      + ".card.tip ol{margin:0;padding-left:18px}"
+      + ".card.tip li{font-size:11.5px;line-height:1.85;color:#6b7280}"
+      /* 润色手法 */
+      + ".tech{background:#fdfbf6;border:1px solid #ece6d9;border-radius:9px;"
+      +   "padding:11px 13px;margin-bottom:9px}"
+      + ".tech:last-child{margin-bottom:0}"
+      + ".tech h5{margin:0 0 7px;font-size:11.5px;font-weight:600;color:#7a5f38;"
+      +   "display:flex;align-items:center;gap:6px}"
+      + ".tech h5::before{content:'';width:3px;height:11px;border-radius:2px;background:#c8a86e}"
+      + ".tech .pair{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:6px}"
+      + ".tech .pbox{border-radius:6px;padding:7px 9px;font-size:10.5px;line-height:1.65}"
+      + ".tech .pbox.before{background:#f4f2ec;color:#8a8f98}"
+      + ".tech .pbox.before em{font-style:normal;color:#a39a8a}"
+      + ".tech .pbox.after{background:#f3f6f0;color:#55614b}"
+      + ".tech .pbox b{display:block;font-size:9px;font-weight:600;letter-spacing:.06em;"
+      +   "margin-bottom:3px;opacity:.75}"
+      + ".tech .eff{font-size:10.5px;line-height:1.7;color:#7d8492;margin:0;"
+      +   "padding-left:9px;border-left:2px solid #e2d3b6}"
       + ".drill .mat{background:#faf7ef;border-left:2px solid #d9c39b;padding:6px 9px;"
       +   "border-radius:0 4px 4px 0;color:#6b6047}"
       /* 润色稿 */
       + ".pol{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:18px 22px;"
-      +   "font-family:'Songti SC',SimSun,serif;font-size:13.5px;line-height:2.05;color:#2b3038;"
+      +   "font-family:'Songti SC',SimSun,serif;font-size:13.5px;line-height:2.05;color:#3f3b35;"
       +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       + ".pol h6{text-align:center;font-size:15px;margin:0 0 12px;font-weight:700;letter-spacing:.04em}"
       + ".pol p{margin:0 0 7px;text-indent:2em}"
@@ -317,28 +361,65 @@
   /* 写作思路页 */
   function outlinePage(res) {
     var ol = res.outline || {};
-    var blk = function (o, fallback) {
-      if (!o) return "";
-      return '<div class="drill"><h5>' + esc(o.title || fallback) + "</h5>" +
-        "<p>" + esc(o.text || "") + "</p></div>";
+
+    /* 参考思路：把开头 / 中间 / 结尾串成一条可照着写下来的路径 */
+    var step = function (o, fallback, mark) {
+      if (!o || !(o.text || o.title)) return "";
+      return '<div class="ol-step">' +
+        '<span class="ol-mark">' + mark + "</span>" +
+        '<div class="ol-body">' +
+          "<h5>" + esc(o.title || fallback) + "</h5>" +
+          "<p>" + esc(o.text || "") + "</p>" +
+        "</div></div>";
     };
+    var flow = step(ol.begin, "开头", "起") + step(ol.middle, "中间", "承") + step(ol.end, "结尾", "合");
+
+    /* 具体问题与修改思路：每条给「现状 → 怎么改 → 示例」 */
+    var issues = (Array.isArray(ol.issues) ? ol.issues : []).map(function (it, i) {
+      if (!it || typeof it !== "object") return "";
+      var name = String(it.title || it.problem || "").trim();
+      if (!name) return "";
+      var row = function (label, val) {
+        val = String(val || "").trim();
+        if (!val) return "";
+        return '<div class="ib-row"><span class="ib-k">' + label + "</span>" +
+          '<span class="ib-v">' + esc(val) + "</span></div>";
+      };
+      return '<div class="ib">' +
+        '<div class="ib-head"><span class="ib-no">' + (i + 1) + "</span>" +
+          "<h5>" + esc(name) + "</h5></div>" +
+        row("现状", it.now || it.problem) +
+        row("怎么改", it.how) +
+        row("示例", it.sample) +
+        "</div>";
+    }).join("");
+
+    /* 兼容旧数据：只有 keys 时仍作为写作小技巧展示 */
     var keys = (ol.keys || []).length
-      ? '<div class="drill"><h5>写作小技巧</h5><p>' +
-        (ol.keys || []).map(esc).join("<br>") + "</p></div>"
+      ? '<div class="blk"><div class="blk-head"><h4>写作小技巧</h4><i></i></div>' +
+        '<div class="card tip"><ol>' +
+        (ol.keys || []).map(function (k) { return "<li>" + esc(k) + "</li>"; }).join("") +
+        "</ol></div></div>"
       : "";
+
     return '<section class="sheet">' +
       head("写作思路", [
         esc(res.title || ""),
         (res.student && res.student !== "未署名") ? esc(res.student) : ""
       ].filter(Boolean).join("　")) +
       '<style>' + tabCss() + "</style>" +
-      '<div class="blk"><div class="blk-head"><h4>段落功能梳理</h4><i></i></div>' +
-        blk(ol.begin, "开头思路") + blk(ol.middle, "中间思路") + blk(ol.end, "结尾思路") +
-        keys + "</div>" +
+      (flow
+        ? '<div class="blk"><div class="blk-head"><h4>参考写作思路</h4><i></i>' +
+          '<span class="meta">按段落功能串联</span></div>' + flow + "</div>"
+        : "") +
+      (issues
+        ? '<div class="blk"><div class="blk-head"><h4>具体问题与修改思路</h4><i></i></div>' +
+          issues + "</div>"
+        : "") +
+      keys +
     "</section>";
   }
 
-  /* 小练笔页 */
   function drillPage(res) {
     var list = res.drills || [];
     var html = list.length
@@ -364,6 +445,22 @@
     var pol = res.polished || { paras: [] };
     var paras = pol.paras || [];
     var words = ZP.countChars(paras.join(""));
+
+    /* 本次改写用到的润色手法：原句 → 润色句对照 */
+    var techs = (Array.isArray(pol.techniques) ? pol.techniques : []).map(function (t) {
+      if (!t || !t.name) return "";
+      var pair = (t.before || t.after)
+        ? '<div class="pair">' +
+            '<div class="pbox before"><b>原文</b>' + esc(t.before || "—") + "</div>" +
+            '<div class="pbox after"><b>润色后</b>' + esc(t.after || "—") + "</div>" +
+          "</div>"
+        : "";
+      return '<div class="tech">' +
+        "<h5>" + esc(t.name) + "</h5>" + pair +
+        (t.effect ? '<p class="eff">' + esc(t.effect) + "</p>" : "") +
+        "</div>";
+    }).join("");
+
     return '<section class="sheet">' +
       head("润色后文章", esc(res.title || "") + "　" + words + " 字") +
       '<style>' + tabCss() + "</style>" +
@@ -372,6 +469,11 @@
           (paras.length ? paras.map(function (t) { return "<p>" + esc(t) + "</p>"; }).join("")
                         : '<p style="text-align:center;color:#a9a293">本次未生成升格范文。</p>') +
         "</div></div>" +
+      (techs
+        ? '<div class="blk"><div class="blk-head"><h4>本文用到的润色手法</h4><i></i>' +
+          '<span class="meta">' + (pol.techniques || []).length + " 处</span></div>" +
+          techs + "</div>"
+        : "") +
     "</section>";
   }
 
