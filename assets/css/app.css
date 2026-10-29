@@ -114,7 +114,6 @@
 .paper.image-mode .essay-sheet{
   position:relative;display:block;line-height:0;
 }
-.paper.image-mode img{display:block;max-width:min(620px,100%);height:auto;border-radius:1px}
 
 
 /* leaders & annotations */
@@ -610,7 +609,6 @@
   position:relative;display:block;line-height:0;margin:0 auto;text-align:center;
   box-shadow:0 8px 26px -18px rgba(30,26,18,.5);border:1px solid #ece5d6;background:#fff;
 }
-.paper.image-mode img{max-width:100%;width:100%;height:auto;display:block}
 .paper.image-mode .essay-col{padding:0 4px}
 .img-hint{
   margin-top:12px;text-align:center;font-size:9.5px;color:#a89e8b;letter-spacing:.03em;
@@ -790,10 +788,15 @@
 .paper.image-mode .paper-inner{padding:26px 18px 22px}
 .paper.image-mode .essay-col{display:flex;justify-content:center;min-width:0}
 .paper.image-mode .essay-sheet{width:auto;max-width:100%}
+/* 图片尺寸唯一来源：宽度跟随容器、高度按原比例，超出视口高度时等比收缩 */
 .paper.image-mode .essay-sheet img{
-  display:block;width:auto;height:auto;
-  max-height:calc(100vh - 250px);
+  display:block;
+  width:100%;
+  height:auto;
   max-width:100%;
+  max-height:calc(100vh - 250px);
+  object-fit:contain;
+  border-radius:1px;
 }
 @media (min-width:1700px){
   .paper.image-mode{width:min(1320px,100%) !important;max-width:min(1320px,100%) !important}
@@ -1584,8 +1587,8 @@
   line-height:0;
   align-self:center;
 }
-.paper.image-mode .essay-sheet img{display:block;max-width:100%}
-.paper.image-mode .hl-layer{inset:0}
+/* 图片是唯一尺寸来源：宽度跟随容器，高度按原始比例；图层绝对贴合图片 */
+.paper.image-mode .hl-layer{position:absolute;inset:0;width:100%;height:100%}
 .paper.image-mode .hl-band{max-width:100%}
 .hl-band{cursor:grab}
 .hl-band:active{cursor:grabbing}

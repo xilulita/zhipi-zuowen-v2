@@ -636,7 +636,7 @@
 
     col.innerHTML =
       '<div class="essay-sheet" style="max-width:' + maxW + 'px">' +
-        '<img src="' + src + '" alt="作文原稿" style="aspect-ratio:' + (1 / ratio) + '">' +
+        '<img src="' + src + '" alt="作文原稿">' +
         '<div class="hl-layer" id="hlLayer" aria-hidden="true"></div>' +
       "</div>" +
       '<p class="img-hint">' +
@@ -678,9 +678,34 @@
     if (imgEl && !imgEl.complete) {
       imgEl.addEventListener("load", relayout);
     }
+
+    /* 图层必须严格贴合图片本体：把 .hl-layer 的尺寸锁到图片的真实渲染矩形。
+       否则容器（受 max-height 影响的图片 + 边框/内边距）与图片本体尺寸不一致，
+       按百分比画的荧光条就会整体偏移、全挤到一侧。 */
+    function syncLayerBox() {
+      var im = $(".essay-sheet img", paper);
+      var sh = $(".essay-sheet", paper);
+      var ly = $("#hlLayer", paper);
+      if (!im || !sh || !ly) return;
+      if (!im.naturalWidth || !im.getBoundingClientRect().width) return;
+      var sr = sh.getBoundingClientRect(), ir = im.getBoundingClientRect();
+      /* 以图片为基准：左/上偏移 = 图片相对容器的位移，宽高 = 图片实际尺寸 */
+      ly.style.left = (ir.left - sr.left - sh.clientLeft) + "px";
+      ly.style.top = (ir.top - sr.top - sh.clientTop) + "px";
+      ly.style.width = ir.width + "px";
+      ly.style.height = ir.height + "px";
+      ly.style.right = "auto";
+      ly.style.bottom = "auto";
+    }
+    function relayoutAll() { syncLayerBox(); relayout(); }
+    if (imgEl) {
+      if (!imgEl.complete) imgEl.addEventListener("load", relayoutAll);
+      else syncLayerBox();
+    }
+    window.addEventListener("resize", syncLayerBox);
     if (typeof ResizeObserver !== "undefined") {
       if (paper.__zpRO) { try { paper.__zpRO.disconnect(); } catch (e) {} }
-      var ro = new ResizeObserver(function () { relayout(); });
+      var ro = new ResizeObserver(function () { relayoutAll(); });
       ro.observe(paper);
       paper.__zpRO = ro;
     }
