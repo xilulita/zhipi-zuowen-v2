@@ -899,20 +899,50 @@
     strip.hidden = false;
     if (inner) { inner.hidden = true; inner.style.display = "none"; }
 
-    strip.innerHTML = S.images.map(function (im, i) {
+    /* 默认只显示当前这一条，避免多份时把上传区撑成一长列；
+       点「查看全部」再展开成列表。 */
+    var curIdx = 0;
+    for (var k = 0; k < S.images.length; k++) {
+      if (S.images[k] === S.image) { curIdx = k; break; }
+    }
+    var list = S.dqOpen ? S.images.map(function (im, i) { return [im, i]; })
+                        : [[S.image || S.images[0], curIdx]];
+
+    strip.classList.toggle("expanded", !!S.dqOpen);
+    strip.innerHTML = list.map(function (pair) {
+      var im = pair[0], i = pair[1];
       var nm = (im.name || ("第" + (i + 1) + "页")).replace(/^\s+|\s+$/g, "");
       return '<div class="thumb' + (im === S.image ? " active" : "") + '" data-i="' + i + '" title="' + R.esc(nm) + '">' +
-        '<span class="thumb-dot"></span>' +
+        '<span class="thumb-pg">' + (i + 1) + "/" + S.images.length + "</span>" +
         '<span class="thumb-name">' + R.esc(nm) + "</span>" +
-        '<span class="thumb-pg">' + (i + 1) + " / " + S.images.length + "</span>" +
-        '<button type="button" class="del" data-del="' + i + '" aria-label="删除第' + (i + 1) + '页">×</button>' +
+        '<button type="button" class="del" data-del="' + i + '" aria-label="删除第' + (i + 1) + '页">' +
+          '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
+        "</button>" +
       "</div>";
     }).join("");
+
+    /* 多于一条时才出现展开入口 */
+    var more = $("#thumbMore");
+    if (more) {
+      more.hidden = S.images.length <= 1;
+      more.classList.toggle("open", !!S.dqOpen);
+      var txt = more.querySelector(".tm-txt");
+      if (txt) txt.textContent = S.dqOpen ? "收起" : ("查看全部 " + S.images.length + " 页");
+    }
   }
 
   function initThumbStrip() {
     var strip = $("#thumbStrip");
     if (!strip) return;
+    var more = $("#thumbMore");
+    if (more) {
+      more.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        S.dqOpen = !S.dqOpen;
+        renderThumbs();
+      });
+    }
     strip.addEventListener("click", function (e) {
       var del = e.target.closest("[data-del]");
       if (del) {
@@ -2115,10 +2145,18 @@
     /* 空态不显示占位文案，避免列表区块与主按钮贴挤 */
     if (empty) empty.hidden = true;
 
-    var collapsed = !document.querySelector(".doc-section") || !document.querySelector(".doc-section").classList.contains("expanded");
+    /* 折叠态只露当前这一份，其余份数由标题旁的计数与展开入口体现；
+       展开后才逐条列出。 */
+    var sec = document.querySelector(".doc-section");
+    var collapsed = !sec || !sec.classList.contains("expanded");
+    var total = docs.filter(function (d) {
+      return (d.images && d.images.length) || (d.text || "").trim() || d.result;
+    }).length;
+
     list.innerHTML = docs.map(function (d, i) {
       var hasContent = (d.images && d.images.length) || (d.text || "").trim() || d.result;
       if (!hasContent) return "";
+      if (collapsed && i !== S.activeDoc) return "";
       /* 折叠时只露当前份，其余份数由标题旁的计数体现 */
       var thumb = (d.images && d.images[0])
         ? '<img class="dq-thumb" src="' + d.images[0].dataUrl + '" alt="">'
@@ -2155,7 +2193,10 @@
       var sec = document.querySelector(".doc-section");
       var open = sec.classList.toggle("expanded");
       list.classList.toggle("expanded", open);
-      toggle.firstChild.nodeValue = open ? "收起" : "展开";
+      var nFilled = (S.docs || []).filter(function (d) {
+        return (d.images && d.images.length) || (d.text || "").trim() || d.result;
+      }).length;
+      toggle.firstChild.nodeValue = open ? "收起" : ("展开全部 " + nFilled + " 份");
       /* 折叠/展开都要重绘，否则折叠态的过滤不会解除 */
       renderDocQueue();
     });

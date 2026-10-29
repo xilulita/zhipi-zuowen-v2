@@ -869,31 +869,44 @@
    只显示文件名，不显示缩略图
    ============================================================ */
 .thumb-strip{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.thumb-strip.expanded{max-height:132px;overflow-y:auto;padding-right:2px}
 .thumb{
   position:relative;display:flex;align-items:center;gap:7px;
-  flex:0 0 30px;height:30px;padding:0 26px 0 10px;border-radius:8px;
+  flex:0 0 30px;height:30px;padding:0 32px 0 9px;border-radius:8px;
   border:1px solid transparent;background:#f4f3f6;cursor:pointer;
   transition:background .15s,border-color .15s,box-shadow .15s;
 }
 .thumb:hover{background:#eef0f3}
 .thumb.active{background:#f4f3f6;border-color:#dcdde2;box-shadow:0 1px 2px rgba(25,28,33,.05)}
-.thumb-dot{
-  width:7px;height:7px;border-radius:50%;background:#10b981;flex:0 0 7px;
+.thumb-pg{
+  flex:0 0 auto;font-family:var(--font-num);font-size:9.5px;color:#8e93a0;
+  letter-spacing:.02em;padding:1px 5px;border-radius:5px;background:#e9e9ef;
 }
+.thumb.active .thumb-pg{background:#dfe3ea;color:#5b6472}
 .thumb-name{
-  flex:1;min-width:0;font-size:11px;color:#4b4f5c;letter-spacing:.01em;
+  flex:1;min-width:0;font-size:10.5px;color:#4b4f5c;letter-spacing:.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.thumb-pg{
-  flex:0 0 auto;font-family:var(--font-num);font-size:10px;color:#989ca8;letter-spacing:.02em;
-}
+/* 删除按钮：始终可见、热区 11px 图标 + 22px 点击区 */
 .thumb .del{
-  position:absolute;right:5px;top:50%;margin-top:-8px;width:16px;height:16px;border-radius:50%;
-  background:rgba(25,28,33,.5);color:#fff;font-size:11px;line-height:1;
-  display:grid;place-items:center;opacity:0;transition:.15s;
+  position:absolute;right:4px;top:50%;margin-top:-11px;
+  width:22px;height:22px;border-radius:6px;
+  background:transparent;color:#a3a8b4;line-height:1;
+  display:grid;place-items:center;transition:.15s;
 }
-.thumb:hover .del{opacity:1}
-.thumb .del:hover{background:var(--ann-red)}
+.thumb .del svg{width:11px;height:11px;display:block}
+.thumb .del:hover{background:#f3d9d4;color:#c0392b}
+.thumb .del:active{background:#efcbc4}
+/* 展开入口：与列表同一视觉语言 */
+.thumb-more{
+  display:flex;align-items:center;justify-content:center;gap:3px;
+  width:100%;margin-top:6px;padding:4px 0;border-radius:6px;
+  border:1px dashed #dcd6c8;background:transparent;
+  font-size:9.5px;color:#9a917f;letter-spacing:.04em;transition:.15s;
+}
+.thumb-more:hover{border-color:#c2a894;color:#8a6f52;background:#fffdf8}
+.thumb-more svg{width:10px;height:10px;transition:transform .18s}
+.thumb-more.open svg{transform:rotate(180deg)}
 
 /* 底部次要操作：添加下一份 / 历史批改 并排两列 */
 .footer-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
@@ -1046,10 +1059,10 @@
 }
 .dq-item .dq-score.pending{font-size:9px;color:#b6ac99;font-weight:400}
 .dq-item .dq-del{
-  position:absolute;right:2px;top:2px;width:14px;height:14px;border-radius:50%;
-  display:grid;place-items:center;font-size:11px;color:#c1b8a6;opacity:0;transition:.14s;
+  position:absolute;right:1px;top:1px;width:18px;height:18px;border-radius:5px;
+  display:grid;place-items:center;font-size:12px;line-height:1;
+  color:#bdb5a5;opacity:1;transition:.14s;
 }
-.dq-item:hover .dq-del{opacity:1}
 .dq-item .dq-del:hover{background:#fdf2f0;color:var(--ann-red)}
 .dq-badge{font-size:8px;padding:0 4px;border-radius:20px;background:#eef4f9;color:#4a6b8a;border:1px solid #d6e3ee}
 
@@ -1200,9 +1213,10 @@
 
 /* 上传区固定高度：有图/无图都不改变整条纵向节奏 */
 #dropzone{height:99px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
-#thumbStrip{max-height:108px;overflow-y:auto}
-#dropzone:has(.thumb-strip:not([hidden])){justify-content:flex-start;padding-top:7px}
-#dropzone:has(.thumb-strip:not([hidden])){height:auto;min-height:99px;max-height:none}
+#thumbStrip{max-height:none;overflow:visible}
+#thumbStrip.expanded{max-height:132px;overflow-y:auto}
+#dropzone:has(.thumb-strip:not([hidden])){justify-content:flex-start;padding:9px 8px 8px}
+#dropzone:has(.thumb-strip:not([hidden])){height:auto;min-height:76px;max-height:none}
 
 /* 列表区块定高：标题行 + 单条，多份时内部滚动 */
 .doc-section{margin-top:5px;padding-top:0}
