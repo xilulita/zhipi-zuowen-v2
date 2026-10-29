@@ -1,7 +1,7 @@
 {
   "name": "zhipi-zuowen",
   "productName": "智批作文",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "智批作文 · AI 作文批改工作台（网页版 + Electron 桌面版）",
   "main": "main.js",
   "author": "智批作文",

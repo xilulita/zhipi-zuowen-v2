@@ -2153,6 +2153,23 @@
       return (d.images && d.images.length) || (d.text || "").trim() || d.result;
     }).length;
 
+    /* 只有多于一份时才提供展开入口；单份展开无意义，点了像没反应 */
+    var tg = $("#dqToggle");
+    if (tg) {
+      var multi = total > 1;
+      tg.hidden = !multi;
+      if (!multi && sec.classList.contains("expanded")) {
+        sec.classList.remove("expanded");
+        list.classList.remove("expanded");
+        collapsed = true;
+      }
+      if (multi) {
+        var lbl = tg.querySelector(".tgl-txt");
+        if (lbl) lbl.textContent = collapsed ? ("展开全部 " + total + " 份") : "收起";
+        tg.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      }
+    }
+
     list.innerHTML = docs.map(function (d, i) {
       var hasContent = (d.images && d.images.length) || (d.text || "").trim() || d.result;
       if (!hasContent) return "";
@@ -2189,15 +2206,14 @@
     if (!list) return;
 
     var toggle = $("#dqToggle");
-    if (toggle) toggle.addEventListener("click", function () {
+    if (toggle) toggle.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
       var sec = document.querySelector(".doc-section");
+      if (!sec) return;
       var open = sec.classList.toggle("expanded");
       list.classList.toggle("expanded", open);
-      var nFilled = (S.docs || []).filter(function (d) {
-        return (d.images && d.images.length) || (d.text || "").trim() || d.result;
-      }).length;
-      toggle.firstChild.nodeValue = open ? "收起" : ("展开全部 " + nFilled + " 份");
-      /* 折叠/展开都要重绘，否则折叠态的过滤不会解除 */
+      /* 文案与 aria 统一交给 renderDocQueue 处理，避免两处各写一遍 */
       renderDocQueue();
     });
 

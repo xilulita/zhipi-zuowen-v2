@@ -1029,7 +1029,7 @@
 .doc-section{padding-bottom:12px}
 /* 高度按整条卡片取整，避免当前项被裁成半截 */
 /* 列表默认只露两行，避免把年级挤出首屏 */
-.dq-toggle{display:flex;align-items:center;gap:4px;margin-top:6px;font-size:9px;color:#a9a293;padding:0}
+.dq-toggle{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;margin:-3px -7px -3px 0;border-radius:5px;font-size:9px;color:#a9a293;letter-spacing:.02em;background:transparent;border:0;cursor:pointer;min-height:18px;transition:.14s}
 .dq-toggle:hover{color:var(--accent)}
 .dq-toggle svg{width:9px;height:9px;transition:transform .2s}
 .doc-section.expanded .dq-toggle svg{transform:rotate(180deg)}
@@ -1876,3 +1876,10 @@ body.adjusting{cursor:grabbing}
 /* 低分维度：用低饱和表达"需关注"，不靠变色喧宾夺主 */
 .dim-item.is-low::before{opacity:.55}
 .dim-item.is-low .tagline{border-color:#e2d9c8;color:#8d8477}
+
+/* 展开入口：热区放大、收起态图标翻转 */
+.dq-toggle:hover{background:#f4f0e6;color:#8a6f52}
+.dq-toggle:active{background:#eee7d8}
+.dq-toggle[hidden]{display:none !important}
+.dq-toggle svg{transition:transform .18s;flex:0 0 auto}
+.doc-section.expanded .dq-toggle svg{transform:rotate(180deg)}
