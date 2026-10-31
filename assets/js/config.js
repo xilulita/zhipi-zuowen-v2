@@ -177,4 +177,42 @@ window.ZP = window.ZP || {};
     var g = ZP.getGrade(id);
     return g.words[0] + "–" + g.words[1] + " 字";
   };
+
+  /* ============================================================
+     润色稿「重点描写方法」配色
+     ------------------------------------------------------------
+     教学上只区分四类改写手法，颜色固定，界面与导出共用同一份定义，
+     保证「屏幕上看到的颜色」与「导出文件里的颜色」完全一致。
+     模型在润色稿里用 <m1>…</m1> <m2>…</m2> … 标注对应片段。
+     ============================================================ */
+  ZP.TECH_MARKS = [
+    { key: "m1", name: "动作 / 细节描写", color: "#b3541e", bg: "rgba(214,138,74,.18)" },
+    { key: "m2", name: "感官描写",       color: "#1f6f8b", bg: "rgba(76,158,182,.16)" },
+    { key: "m3", name: "修辞手法",       color: "#7a4fa8", bg: "rgba(139,110,192,.16)" },
+    { key: "m4", name: "议论改叙述 / 点题", color: "#2f7d5c", bg: "rgba(72,150,116,.16)" }
+  ];
+
+  ZP.techMarkOf = function (key) {
+    for (var i = 0; i < ZP.TECH_MARKS.length; i++) {
+      if (ZP.TECH_MARKS[i].key === key) return ZP.TECH_MARKS[i];
+    }
+    return null;
+  };
+
+  /* 去掉 <m1>…</m4> 标记，只留文字：字数统计与导出必须用这个口径 */
+  ZP.stripTechMarks = function (text) {
+    return String(text == null ? "" : text).replace(/<\/?(?:m1|m2|m3|m4)>/g, "");
+  };
+
+  /* 把 <m1>…</m1> 这类标记转成可渲染的 HTML。
+     escFn 负责文本转义（不转义标签），未知标签一律当纯文本输出，防止注入。 */
+  ZP.paintTechMarks = function (text, escFn, wrap) {
+    var raw = String(text == null ? "" : text);
+    var keys = ZP.TECH_MARKS.map(function (t) { return t.key; }).join("|");
+    var safe = escFn(raw);
+    var re = new RegExp("&lt;(" + keys + ")&gt;([\\s\\S]*?)&lt;/\\1&gt;", "g");
+    return safe
+      .replace(re, function (all, k, inner) { return wrap(k, inner); })
+      .replace(/&lt;\/?(?:m1|m2|m3|m4)&gt;/g, "");
+  };
 })(window.ZP);
