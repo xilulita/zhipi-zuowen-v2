@@ -82,7 +82,6 @@ window.ZP = window.ZP || {};
       polished: res.polished,
       inRange: res.inRange,
       range: res.range,
-      disclaimer: res.disclaimer,
       source: res.source,
       docId: res.docId || "",
       elapsed: res.elapsed || 0,
