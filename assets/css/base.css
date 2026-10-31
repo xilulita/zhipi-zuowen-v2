@@ -308,6 +308,14 @@ input[type=text]:focus,input[type=password]:focus,select:focus,textarea:focus{
 .pe-icon svg{width:44px;height:44px}
 .paper-empty h3{font-size:13px;font-weight:600;color:#8d8477;letter-spacing:.06em}
 .paper-empty p{font-size:11px;line-height:1.8;color:#b0a898;margin-top:6px}
+/* 画板空状态：直接给「看演示效果」的入口，不再挤占左侧栏 */
+.paper-empty .pe-demo{
+  display:inline-flex;align-items:center;gap:5px;margin-top:14px;padding:6px 14px;
+  border:1px solid #ddd4bf;border-radius:20px;background:#fffdf7;
+  font-size:11px;color:var(--ink-3);letter-spacing:.04em;cursor:pointer;transition:.15s;
+}
+.paper-empty .pe-demo svg{width:12px;height:12px;color:var(--accent)}
+.paper-empty .pe-demo:hover{border-color:var(--accent);color:var(--accent);background:#fffaf0}
 
 /* 规格：左 240 / 右 360，仅在窄屏收缩 */
 @media (max-width:1200px){
