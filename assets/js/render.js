@@ -35,6 +35,9 @@
   /* 编号元素的实际占位宽度（px） */
   var NUM_W = 21;
 
+  /* 写作思路分段用：按换行或「1. 2. 3.」序号切分（用 RegExp 构造，避免源码转义） */
+  var NL_OR_NUM = new RegExp(String.fromCharCode(10) + "|(?=[0-9]{1,2}[.、])");
+
   function num() {
     for (var i = 0; i < arguments.length; i++) {
       var v = arguments[i];
@@ -636,7 +639,7 @@
 
     col.innerHTML =
       '<div class="essay-sheet" style="max-width:' + maxW + 'px">' +
-        '<img src="' + src + '" alt="作文原稿">' +
+        '<img src="' + src + '" alt="作文原稿" style="aspect-ratio:' + (1 / ratio) + '">' +
         '<div class="hl-layer" id="hlLayer" aria-hidden="true"></div>' +
       "</div>" +
       '<p class="img-hint">' +
@@ -678,34 +681,9 @@
     if (imgEl && !imgEl.complete) {
       imgEl.addEventListener("load", relayout);
     }
-
-    /* 图层必须严格贴合图片本体：把 .hl-layer 的尺寸锁到图片的真实渲染矩形。
-       否则容器（受 max-height 影响的图片 + 边框/内边距）与图片本体尺寸不一致，
-       按百分比画的荧光条就会整体偏移、全挤到一侧。 */
-    function syncLayerBox() {
-      var im = $(".essay-sheet img", paper);
-      var sh = $(".essay-sheet", paper);
-      var ly = $("#hlLayer", paper);
-      if (!im || !sh || !ly) return;
-      if (!im.naturalWidth || !im.getBoundingClientRect().width) return;
-      var sr = sh.getBoundingClientRect(), ir = im.getBoundingClientRect();
-      /* 以图片为基准：左/上偏移 = 图片相对容器的位移，宽高 = 图片实际尺寸 */
-      ly.style.left = (ir.left - sr.left - sh.clientLeft) + "px";
-      ly.style.top = (ir.top - sr.top - sh.clientTop) + "px";
-      ly.style.width = ir.width + "px";
-      ly.style.height = ir.height + "px";
-      ly.style.right = "auto";
-      ly.style.bottom = "auto";
-    }
-    function relayoutAll() { syncLayerBox(); relayout(); }
-    if (imgEl) {
-      if (!imgEl.complete) imgEl.addEventListener("load", relayoutAll);
-      else syncLayerBox();
-    }
-    window.addEventListener("resize", syncLayerBox);
     if (typeof ResizeObserver !== "undefined") {
       if (paper.__zpRO) { try { paper.__zpRO.disconnect(); } catch (e) {} }
-      var ro = new ResizeObserver(function () { relayoutAll(); });
+      var ro = new ResizeObserver(function () { relayout(); });
       ro.observe(paper);
       paper.__zpRO = ro;
     }
@@ -1135,6 +1113,10 @@
         '<div class="pe-icon"><svg viewBox="0 0 44 44" fill="none"><path d="M11 9.5h15.5L34 17v17.5H11z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M26 9.5V17h8" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M16.5 23.5h12M16.5 28h8.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></div>' +
         '<h3>等待作文原稿</h3>' +
         '<p>拖入作文照片，或在左侧粘贴正文文字。<br>载入后点击「开始 AI 批改」生成四维报告。</p>' +
+        '<button class="pe-demo" type="button" data-demo="1">' +
+          '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2.6 8.6 5.6 12 6.1 9.5 8.5 10.1 12 7 10.4 3.9 12 4.5 8.5 2 6.1 5.4 5.6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>' +
+          "看演示效果" +
+        "</button>" +
       "</div>";
   }
 
@@ -1157,7 +1139,6 @@
         "</span><b>" + hit.score + "</b></div>";
     }).join("");
 
-    $("#reportDisclaimer").textContent = r.disclaimer || "";
     var pill = $("#statusPill");
     pill.textContent = r.isDemo ? "演示" : "已完成";
     pill.className = "status-pill" + (r.isDemo ? "" : " done");
@@ -1395,26 +1376,76 @@
 
   /* ---- Tab 2 ---- */
   function renderOutline(r) {
+    /* issues 为后加字段：旧报告没有，缺失时整块不渲染 */
     var o = r.outline || {};
     var steps = [o.begin, o.middle, o.end].filter(Boolean);
-    var html =
-      '<div class="blk">' +
-        '<div class="blk-head"><h4>写作思路大纲</h4><i></i><span class="blk-meta">' +
-        esc(r.meta.split(" · ")[0]) + " 通用路径</span></div>" +
+    var issues = Array.isArray(r.issues) ? r.issues : [];
+
+    var html = "";
+
+    /* ---- 参考写作思路：按「开头 / 中间 / 结尾」给可直接照做的路径 ---- */
+    if (steps.length) {
+      html += '<div class="blk">' +
+        '<div class="blk-head"><h4>参考写作思路</h4><i></i><span class="blk-meta">' +
+        esc((r.meta || "").split(" · ")[0]) + " 重写提纲</span></div>" +
+        '<div class="ol-note">按本文题目与内容生成，可作为重新构思一篇作文时的客观提纲。</div>' +
         '<div class="outline-flow">' +
-          steps.map(function (s) {
-            return '<div class="ol-step"><div class="ol-tag">' + esc(s.title) + "</div>" +
-              "<p>" + rich(s.text) + "</p></div>";
+          steps.map(function (st) {
+            var text = rich(st.text || "");
+            /* 模型用「1. 2. 3.」分条时转成有序列表，与参考样式一致 */
+            var lines = (st.text || "").split(NL_OR_NUM).map(function (x) { return x.trim(); })
+              .filter(Boolean);
+            var numRe = /^[0-9]{1,2}[.、]\s*/;
+            var hasNum = lines.some(function (x) { return numRe.test(x); });
+            var body;
+            if (hasNum) {
+              /* 首句可能是不带序号的引导语，单独成段；其余按序号转成有序列表 */
+              var lead = [], items = [], started = false;
+              lines.forEach(function (ln) {
+                if (numRe.test(ln)) { started = true; items.push(ln.replace(numRe, "")); }
+                else if (!started) lead.push(ln);
+                else if (items.length) items[items.length - 1] += ln;
+              });
+              body = (lead.length ? "<p>" + rich(lead.join("")) + "</p>" : "") +
+                (items.length
+                  ? '<ol class="ol-list">' + items.map(function (ln) {
+                      return "<li>" + rich(ln) + "</li>";
+                    }).join("") + "</ol>"
+                  : "");
+            } else {
+              body = "<p>" + text + "</p>";
+            }
+            return '<div class="ol-step"><div class="ol-tag">' + esc(st.title) + "</div>" + body + "</div>";
           }).join("") +
         "</div>" +
       "</div>";
-
-    if (o.keys && o.keys.length) {
-      html += '<div class="blk"><div class="blk-head"><h4>写好这类作文的关键</h4><i></i></div>' +
-        '<div class="tip-card"><h5>写作小技巧</h5><ul>' +
-        o.keys.map(function (k) { return "<li>" + rich(k) + "</li>"; }).join("") +
-        "</ul></div></div>";
     }
+
+    /* ---- 具体问题与修改思路：整篇层面的问题归纳，每条含方向与步骤 ---- */
+    if (issues.length) {
+      html += '<div class="blk">' +
+        '<div class="blk-head"><h4>具体问题与修改思路</h4><i></i><span class="blk-meta">' +
+        issues.length + " 项 · 按优先级排列</span></div>" +
+        issues.map(function (it, i) {
+          var stepsHtml = (it.steps || []).length
+            ? '<ol class="fix-steps">' + it.steps.map(function (t) { return "<li>" + rich(t) + "</li>"; }).join("") + "</ol>"
+            : "";
+          return '<div class="issue">' +
+            '<div class="issue-top"><span class="issue-no">' + (it.no || i + 1) + "</span>" +
+              '<p class="issue-problem">' + rich(it.problem || "") + "</p></div>" +
+            (it.advice
+              ? '<div class="issue-advice"><span class="ia-lb">修改思路</span><p>' + rich(it.advice) + "</p></div>"
+              : "") +
+            (stepsHtml ? '<div class="issue-steps"><span class="ia-lb">怎么做</span>' + stepsHtml + "</div>" : "") +
+          "</div>";
+        }).join("") +
+      "</div>";
+    }
+
+    if (!html) {
+      html = '<div class="blk"><div class="comment-card overall-text">本次未生成写作思路，可点击「开始 AI 批改」重新生成。</div></div>';
+    }
+
     $("#panelOutline").innerHTML = html;
   }
 
@@ -1443,11 +1474,47 @@
   }
 
   /* ---- Tab 4 ---- */
+  /* 润色稿正文：把 <m1>…</m4> 转成对应手法的底色与字色。
+     标记之外的文字保持正文色，避免整篇单色难辨重点。 */
+  function techBody(text) {
+    return ZP.paintTechMarks(text, esc, function (k, inner) {
+      var mk = ZP.techMarkOf(k);
+      if (!mk) return inner;
+      return '<span class="tech-span" style="--c:' + mk.color + '">' + inner + "</span>";
+    });
+  }
+
+  /* 颜色图例：只列出本篇实际出现的标记，没出现的类别不占位 */
+  function legendHtml(p) {
+    var body = (p.paras || []).join("");
+    var used = ZP.TECH_MARKS.filter(function (t) { return body.indexOf("<" + t.key + ">") >= 0; });
+    if (!used.length) return "";
+    return '<div class="tech-legend">' + used.map(function (t) {
+      return '<span style="--c:' + t.color + '"><i></i>' + esc(t.name) + "</span>";
+    }).join("") + "</div>";
+  }
+
   function renderPolished(r) {
     var p = r.polished || { paras: [], words: 0 };
     var g = ZP.getGrade(r.grade || S.grade);
-    var words = p.words || ZP.countChars((p.paras || []).join(""));
+    var words = p.words || ZP.countChars(ZP.stripTechMarks((p.paras || []).join("")));
     var inRange = words >= g.words[0] && words <= g.words[1];
+
+    /* 范文没生成出来：给出可执行的原因与下一步，不再只留一片空白 */
+    if (!(p.paras || []).length) {
+      var why = r.polishFailed === "no_source"
+        ? "这次的批改没有取到原文句子（图片稿的批注可能未带原句），生成范文缺少依据。"
+        : (r.polishFailed ? "生成范文时出错：" + esc(String(r.polishFailed).slice(0, 120)) : "");
+      $("#panelPolished").innerHTML =
+        '<div class="blk"><div class="blk-head"><h4>润色后文章</h4><i></i>' +
+          '<span class="blk-meta">本次未生成</span></div>' +
+          '<div class="comment-card overall-text">' +
+            (why ? "<p>" + why + "</p>" : "") +
+            '<p>可这样处理：① 在左侧「稿源文本」里粘贴作文正文后重新批改；' +
+            '② 或换用能逐字照抄原句的视觉模型；③ 已生成的评分与批注仍然有效，不受影响。</p>' +
+          "</div></div>";
+      return;
+    }
 
     var html =
       '<div class="blk">' +
@@ -1455,14 +1522,35 @@
           '<span class="ph-l">' + esc(g.name) + "要求 " + g.words[0] + "–" + g.words[1] + " 字</span>" +
           '<span class="ph-r">' + fmt(words) + "<em>字</em></span>" +
         "</div>" +
+        legendHtml(p) +
         '<div class="polished-body">' +
           "<h5>" + esc(p.title || r.title) + "</h5>" +
-          (p.paras || []).map(function (t) { return "<p>" + esc(t) + "</p>"; }).join("") +
+          (p.paras || []).map(function (t) { return "<p>" + techBody(t) + "</p>"; }).join("") +
         "</div>" +
         '<div class="range-note' + (inRange ? "" : " warn") + '">' +
           (inRange ? "字数落在本年级区间内" : "字数偏离本年级要求区间，建议增删细节后重试") +
         "</div>" +
       "</div>";
+
+    /* 本次使用的润色手法：旧报告与被字数校准覆盖时可能缺该字段，缺失则整块不渲染 */
+    var tech = (Array.isArray(p.techniques) ? p.techniques : []).filter(function (t) {
+      return t && (typeof t === "object" ? String(t.text || "").trim() : String(t).trim());
+    });
+    if (tech.length) {
+      html += '<div class="blk tech-blk">' +
+        '<div class="blk-head"><h4>本次使用的润色手法</h4><i></i><span class="blk-meta">' +
+        tech.length + " 条 · 对照原文查看改动</span></div>" +
+        '<ul class="tech-list">' +
+          tech.map(function (t) {
+            var mk = ZP.techMarkOf(t && t.mark);
+            var label = mk ? '<b class="tech-key" style="--c:' + mk.color + '">' + esc(mk.name) + "</b>" : "";
+            var body = String((t && t.text) || t || "");
+            return "<li" + (mk ? ' style="--c:' + mk.color + '"' : "") + ">" + label + "<span>" + rich(body) + "</span></li>";
+          }).join("") +
+        "</ul>" +
+      "</div>";
+    }
+
     $("#panelPolished").innerHTML = html;
   }
 
