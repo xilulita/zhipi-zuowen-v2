@@ -255,12 +255,30 @@ window.ZP = window.ZP || {};
     if (opt.trace) {
       var u = data.usage || {};
       var durMs = Date.now() - (t0 || Date.now());
+      var pTok = u.prompt_tokens || u.input_tokens || 0;
+      var cTok = u.completion_tokens || u.output_tokens || 0;
+      var tTok = u.total_tokens || (pTok + cTok);
+      var estimated = false;
+      /* 有的服务商（或代理网关）不返回 usage：按字符数粗估，并标记 estimated，
+         界面上会加「≈」号，绝不把估算值当真实计费。 */
+      if (!tTok) {
+        var inChars = 0;
+        (messages || []).forEach(function (m) {
+          inChars += String((m && m.content) || "").length;
+        });
+        var outChars = String(txt || "").length;
+        pTok = Math.round(inChars / 1.6);
+        cTok = Math.round(outChars / 1.6);
+        tTok = pTok + cTok;
+        estimated = true;
+      }
       opt.trace.push({
         step: opt.traceLabel || "request",
         ms: durMs,
-        prompt: u.prompt_tokens || 0,
-        completion: u.completion_tokens || 0,
-        total: u.total_tokens || ((u.prompt_tokens || 0) + (u.completion_tokens || 0)),
+        prompt: pTok,
+        completion: cTok,
+        total: tTok,
+        estimated: estimated,
         model: opt.model || ZP.config.model,
         ok: true
       });
@@ -352,6 +370,21 @@ window.ZP = window.ZP || {};
       "【小练笔】3 道题，每题精简，必须针对本文真实存在的短板，分别在描写手法、表达手法、修辞手法、感官描写、环境描写中选择不同角度切入；",
       "problem 指出文中具体缺陷；think 给可执行的写作路径；material 给 2–3 条可直接借用的素材或句式；task 给字数与硬性限制。",
       "",
+      "【写作思路】outline 面向「重新构思一篇同类作文」，是客观提纲，不复述本文原句：",
+      "   · begin / middle / end 各写「可以怎么写」，给出可直接照做的写法路径，而不是评价本文优缺点；",
+      "   · 用「可以……」「比如……」的句式，允许给出具体的画面、句子建议；",
+      "   · middle 若有多层推进，用「1. 2. 3.」分条，每条一句话，不写空泛的「注意细节」「多描写」；",
+      "   · 必须贴合本文的题目、题材与学生生活经验，不得写成通用套话。",
+      "",
+      "【具体问题与修改思路】issues 列出本文最关键的 3 个问题，每个问题独立成条，指向具体位置：",
+      "   · problem：一句话点明问题（30–60 字），必须说清「哪一部分 / 哪一类表述」出了问题，",
+      "     要能对应到原文的具体句子或段落，禁止「内容不够生动」这类没有落点的说法；",
+      "   · advice：一句话给出总的修改方向（20–50 字），说明「换掉什么、改成什么」；",
+      "   · steps：3 条可执行步骤（每条 15–40 字），按先后顺序写，第一步必须是「先做什么」（如先删掉某类句子），",
+      "     最后一步落到「最后怎么收束」，让学生照着能直接动笔。",
+      "   · 三条问题不要重复，尽量覆盖内容、结构、语言三个层面。",
+      "   · 本节与 annotations 是不同层级：annotations 是逐句批注，issues 是整篇层面的问题归纳，不要简单复制批注内容。",
+      "",
       "【润色稿】本次不输出润色稿（polished 留空对象 {}），润色稿会单独生成，以保证批注写足。",
       "",
       "【正文】",
@@ -365,11 +398,17 @@ window.ZP = window.ZP || {};
         overall: "总评 180–260 字，分 2–3 段，用 \\n\\n 分段；先肯定具体优点，再指出 2 个核心问题，最后给一条可执行的改进路径",
         annotations: [{ para: 0, page: 0, sentence: "原文句子", box: { y: 0, x1: 0, x2: 0 }, type: "red|amber|green|violet", tag: "错别字|病句|润色语句|优秀好句|修改建议", note: "40-90字：问题在哪+为何这样改", fix: "amber/violet 给25-80字可直接替换的改写句；red 只给正确写法（≤20字）" }],
         outline: {
-          begin: { title: "开头思路", text: "120字以内" },
-          middle: { title: "中间思路", text: "150字以内" },
-          end: { title: "结尾思路", text: "120字以内" },
-          keys: ["写作关键 4 条，每条 40 字以内"]
+          begin: { title: "开头", text: "可以直接照做的开篇写法，120字以内；用「可以……比如……」句式" },
+          middle: { title: "中间", text: "分层推进的写法路径，150字以内；多层用 1. 2. 3. 分条" },
+          end: { title: "结尾", text: "收束写法，120字以内；强调与开头的照应或情感落点" }
         },
+        issues: [
+          {
+            problem: "具体问题：哪一部分出了什么问题（30-60字，须有落点）",
+            advice: "总修改方向：换掉什么、改成什么（20-50字）",
+            steps: ["第一步：先做什么", "第二步：再做什么", "第三步：最后怎么收束"]
+          }
+        ],
         drills: [{ no: 1, title: "题目", problem: "对应问题", think: "思路引导", material: "素材示例", task: "任务要求" }],
         polished: {}
       }, null, 2)
@@ -400,9 +439,12 @@ window.ZP = window.ZP || {};
         norm.polished = pol;
         var gw = ZP.getGrade(ctx.grade).words;
         norm.inRange = pol.words >= gw[0] && pol.words <= gw[1];
+      } else {
+        norm.polishFailed = "no_source";
       }
     } catch (e) {
       if (e && e.code === "ABORTED") throw e;
+      norm.polishFailed = (e && e.message) ? String(e.message).slice(0, 200) : "unknown";
     }
 
     onStage && onStage("正在排版批注与升格范文", 94);
@@ -412,49 +454,102 @@ window.ZP = window.ZP || {};
   /* 让润色稿严格落到本年级字数区间 */
   var NL = String.fromCharCode(10);
 
-  async function enforceRange(norm, ctx, useVision) {
+  /**
+   * 让润色稿严格落到本年级字数区间（最多校准 rounds 轮）。
+   * @param norm      normalize 产出的结果对象（读 norm.polished）
+   * @param ctx       { text, grade, genre, trace }
+   * @param useVision 视觉链路没有独立文本 Key 时沿用视觉模型
+   * @param signal    AbortSignal，用户停止时能立刻中断
+   * @param rounds    最多尝试几轮，默认 2
+   * @returns norm（有改进才替换 polished，否则原样返回）
+   */
+  async function enforceRange(norm, ctx, useVision, signal, rounds) {
+    if (!norm || !norm.polished || !Array.isArray(norm.polished.paras) || !norm.polished.paras.length) return norm;
+
     var g = ZP.getGrade(ctx.grade);
-    var cur = norm.polished.paras.join(NL);
-    var now = ZP.countChars(cur);
-    var target = now < g.words[0] ? (g.words[0] + g.words[1]) / 2 : (g.words[0] + g.words[1]) / 2;
-    var delta = Math.round(target - now);
-    var ask = "下面这篇升格范文当前 " + now + " 字，" + g.name +
-      "要求 " + g.words[0] + "–" + g.words[1] + " 字。" + NL +
-      (delta > 0 ? "请增补约 " + delta + " 字的具体细节。" : "请精简约 " + Math.abs(delta) + " 字。") + NL +
-      "请在不改变情节、人物与叙述视角的前提下，增补或精简细节，使总字数严格落在 " +
-      g.words[0] + "–" + g.words[1] + " 字之间。" + NL +
-      "输出 JSON：{\"title\":\"标题\",\"paras\":[\"第一段\",\"第二段\"]}" + NL +
-      "【原文】" + NL + cur;
+    var minW = g.words[0], maxW = g.words[1];
+    var midW = Math.round((minW + maxW) / 2);
+    var maxRounds = rounds === undefined ? 2 : rounds;
 
-    var msgs = [
-      { role: "system", content: "你是语文教研员，只做字数校准，不改情节与视角。只输出 JSON。" },
-      { role: "user", content: ask }
-    ];
-
-    /* 视觉直读链路没有独立的文本模型 Key，字数校准沿用视觉模型 */
-    var raw = await ZP.chat(msgs, {
-      vision: !!useVision,
-      temperature: 0.28, json: true, timeout: 120000, maxTokens: 3000
-    });
-    var d = ZP.parseJSON(raw);
-    var paras = (Array.isArray(d.paras) ? d.paras : [])
-      .map(function (x) { return String(x).trim(); })
-      .filter(Boolean);
-    if (!paras.length) return norm;
-
-    var words = ZP.countChars(paras.join(""));
-
-    /* 只有确实更接近目标区间时才采用改写稿 */
+    /* 距离目标区间还差多少（在区间内为 0） */
     function dist(n) {
-      if (n < g.words[0]) return g.words[0] - n;
-      if (n > g.words[1]) return n - g.words[1];
+      if (n < minW) return minW - n;
+      if (n > maxW) return n - maxW;
       return 0;
     }
-    if (dist(words) >= dist(norm.polished.words)) return norm;
 
-    norm.polished = { title: String(d.title || norm.polished.title), words: words, paras: paras };
-    norm.inRange = words >= g.words[0] && words <= g.words[1];
-    norm.range = g.words;
+    for (var r = 0; r < maxRounds; r++) {
+      if (signal && signal.aborted) {
+        var ab = new Error("已停止");
+        ab.code = "ABORTED";
+        throw ab;
+      }
+
+      var curParas = norm.polished.paras;
+      var curText = curParas.join(NL);
+      var now = ZP.countChars(ZP.stripTechMarks(curText));
+      if (dist(now) === 0) break;                 /* 已在区间内，不必再校准 */
+
+      var target = midW;                          /* 统一收向区间中点 */
+      var delta = Math.round(target - now);
+      var dirTxt = delta > 0
+        ? "请增补约 " + delta + " 字的具体细节（动作、对话、场景或心理），不要加议论。"
+        : "请精简约 " + Math.abs(delta) + " 字，优先删去重复表述与空泛议论，保留细节。";
+
+      var ask = "下面这篇升格范文当前 " + now + " 字，" + g.name +
+        "要求 " + minW + "–" + maxW + " 字。" + NL +
+        dirTxt + NL +
+        "请在不改变情节、人物与叙述视角的前提下，使总字数严格落在 " + minW + "–" + maxW + " 字之间。" + NL +
+        "★保留原有的 <m1>~<m4> 标记：被标记的片段如果保留，标记必须原样保留；被删掉的片段连同标记一起删。" + NL +
+        '输出 JSON：{"title":"标题","paras":["第一段","第二段"]}' + NL +
+        "【原文】" + NL + curText;
+
+      var msgs = [
+        { role: "system", content: "你是语文教研员，只做字数校准，不改情节与视角。只输出 JSON。" },
+        { role: "user", content: ask }
+      ];
+
+      /* 视觉直读链路没有独立的文本模型 Key，字数校准沿用视觉模型 */
+      var raw = await ZP.chat(msgs, {
+        vision: !!useVision, temperature: 0.28, json: true,
+        timeout: 120000, maxTokens: 3000,
+        signal: signal, trace: ctx.trace, traceLabel: "字数校准"
+      });
+      /* 被截断时尝试续写，避免整轮白跑 */
+      raw = await continueIfTruncated(raw, msgs, 1, false, signal, ctx.trace);
+
+      var paras;
+      try {
+        var d = ZP.parseJSON(raw) || {};
+        paras = (Array.isArray(d.paras) ? d.paras : [])
+          .map(function (x) { return String(x).trim(); })
+          .filter(Boolean);
+        /* 只去掉续写造成的整段重复，保留排比/反复等合法重复 */
+        paras = dedupeTailRepeat(paras);
+        if (paras.length && !norm.polished.title && d.title) {
+          norm.polished.title = String(d.title);
+        }
+      } catch (e) {
+        paras = [];
+      }
+      if (!paras.length) break;
+
+      var words = ZP.countChars(ZP.stripTechMarks(paras.join("")));
+
+      /* 只有确实更接近目标区间时才采用这一版的改写稿 */
+      if (dist(words) >= dist(norm.polished.words)) break;
+
+      norm.polished = {
+        title: norm.polished.title,
+        words: words,
+        paras: paras,
+        /* 字数校准只动篇幅，保留首轮产出的润色手法说明 */
+        techniques: norm.polished.techniques || []
+      };
+      norm.inRange = words >= minW && words <= maxW;
+      norm.range = g.words;
+    }
+
     return norm;
   }
 
@@ -566,7 +661,8 @@ window.ZP = window.ZP || {};
     var pol = d.polished || {};
     var polParas = (Array.isArray(pol.paras) ? pol.paras : []).map(function (p) { return String(p).trim(); }).filter(Boolean);
     var polText = polParas.join("");
-    var polWords = ZP.countChars(polText);
+    /* 字数不含 <m1>~<m4> 标记，与界面显示口径一致 */
+    var polWords = ZP.countChars(ZP.stripTechMarks(polText));
 
     var drills = (Array.isArray(d.drills) ? d.drills : []).slice(0, 3).map(function (x, i) {
       return {
@@ -620,18 +716,30 @@ window.ZP = window.ZP || {};
       outline: {
         begin: step("begin", "开头思路"),
         middle: step("middle", "中间思路"),
-        end: step("end", "结尾思路"),
-        keys: (Array.isArray(ol.keys) ? ol.keys : []).slice(0, 6).map(function (k) { return String(k).slice(0, 120); })
+        end: step("end", "结尾思路")
       },
+      /* 具体问题与修改思路：整篇层面的问题归纳，与逐句批注互补 */
+      issues: (Array.isArray(d.issues) ? d.issues : []).slice(0, 5).map(function (x, i) {
+        x = x || {};
+        return {
+          no: i + 1,
+          problem: String(x.problem || "").slice(0, 200),
+          advice: String(x.advice || "").slice(0, 200),
+          steps: (Array.isArray(x.steps) ? x.steps : []).slice(0, 5)
+            .map(function (t) { return String(t).slice(0, 120); })
+            .filter(function (t) { return t.trim(); })
+        };
+      }).filter(function (x) { return x.problem; }),
       drills: drills,
       polished: {
         title: String(pol.title || ctx.title || ""),
         words: polWords,
-        paras: polParas
+        paras: polParas,
+        /* 本次改写实际使用的手法，供报告底部展示 */
+        techniques: (Array.isArray(pol.techniques) ? pol.techniques : []).slice(0, 8)
       },
       inRange: polWords >= g.words[0] && polWords <= g.words[1],
-      range: g.words,
-      disclaimer: "本报告由 AI 依据" + g.name + "课标要求生成，供教学参考，最终评判以教师为准。"
+      range: g.words
     };
   }
 
@@ -747,7 +855,7 @@ window.ZP = window.ZP || {};
     return false;
   }
 
-  async function continueIfTruncated(raw, msgs, maxTries, wasTruncated, signal) {
+  async function continueIfTruncated(raw, msgs, maxTries, wasTruncated, signal, trace) {
     var text = raw;
     /* 只要 JSON 还没闭合就继续补，不再单看 finish_reason */
     var truncated = !!wasTruncated || !jsonComplete(text);
@@ -762,7 +870,7 @@ window.ZP = window.ZP || {};
           ]),
           {
             vision: true, temperature: 0.18, json: true, timeout: 180000, maxTokens: 6000,
-            signal: signal,
+            signal: signal, trace: trace, traceLabel: "续写补全",
             onMeta: function (fin) { meta.finish = fin; }
           }
         );
@@ -814,7 +922,7 @@ window.ZP = window.ZP || {};
     });
 
     /* 输出被截断时自动续写，直到 JSON 闭合（最多续 2 次） */
-    raw = await continueIfTruncated(raw, vmsgs, 3, trunc, ctx.signal);
+    raw = await continueIfTruncated(raw, vmsgs, 3, trunc, ctx.signal, ctx.trace);
 
     onStage && onStage("正在生成四维评分与批注", 74);
     var data = ZP.parseJSON(raw);
@@ -830,9 +938,15 @@ window.ZP = window.ZP || {};
         norm.polished = pol;
         norm.inRange = pol.words >= ZP.getGrade(ctx.grade).words[0] &&
                        pol.words <= ZP.getGrade(ctx.grade).words[1];
+      } else {
+        /* 拿不到原文（批注也没有句子）时生成不了范文：标记一下，界面上给出可执行提示，
+           不再静默留空让老师以为是模型没写 */
+        norm.polishFailed = "no_source";
       }
     } catch (e) {
       if (e && e.code === "ABORTED") throw e;
+      /* 第二阶段失败不影响主批改，但要记录原因，报告里明确告知 */
+      norm.polishFailed = (e && e.message) ? String(e.message).slice(0, 200) : "unknown";
     }
 
     onStage && onStage("正在整理批注与报告", 92);
@@ -848,7 +962,7 @@ window.ZP = window.ZP || {};
       var estParas = Math.max(maxPara, polParas, 3);
 
       /* 原文通常略短于升格稿，按 0.92 估算并取整到十位 */
-      var polWords = ZP.countChars((norm.polished && norm.polished.paras || []).join(""));
+      var polWords = ZP.countChars(ZP.stripTechMarks((norm.polished && norm.polished.paras || []).join("")));
       var estWords = polWords > 0 ? Math.round(polWords * 0.92 / 10) * 10 : 0;
 
       norm.metrics = norm.metrics || {};
@@ -887,10 +1001,28 @@ window.ZP = window.ZP || {};
       "2) 补足细节与五感描写，删掉空泛议论，让画面更具体；",
       "3) 字数严格落在 " + g.words[0] + "-" + g.words[1] + " 字之间，分 4-6 段；",
       "4) 语言符合" + g.name + "水准，不生硬、不堆砌辞藻；",
-      "5) 改写时实际用到了哪些润色手法，逐条写出来：每条给出手法名称、原文片段、润色后片段，以及一句话说明这个手法在这篇里起到了什么作用；",
-      "   常见手法可参考但不限于：细节放大、动作分解、五感描写、心理补白、句式变换、虚实结合、画面聚焦、时间拉长、对比映衬、留白收束。",
-      "   手法必须是你真的用到了的，不要罗列没用到的；数量 4-6 条，按在文中出现的先后排序。",
-      '6) 只输出 JSON：{"title":"标题","paras":["第一段","第二段"],"techniques":[{"name":"手法名称","before":"原文片段","after":"润色后片段","effect":"这个手法在本篇的作用，30字内"}]}',
+      "5) 同时说明本次改写在哪些地方动了手，每条一条要点，为教师讲评提供依据；",
+      "6) ★为了让教师一眼看出重点描写方法，在正文中用行内标记标出改写片段（详见下方标记规则）。",
+      "",
+      "【重点标记规则】正文 paras 里用以下四个标签包裹「本次改写过的、体现某类手法」的片段：",
+      "   <m1>…</m1>  动作 / 细节描写（具体的动作、神态、物件细节）",
+      "   <m2>…</m2>  感官描写（听觉、触觉、嗅觉、味觉、视觉色彩）",
+      "   <m3>…</m3>  修辞手法（比喻、拟人、排比、反复等）",
+      "   <m4>…</m4>  议论改叙述 / 点题（把空泛议论换成具体落点，或首尾照应）",
+      "   · 只标真正改写过的片段，每段 0–2 处，全篇 6–10 处，不要通篇满标；",
+      "   · 一个片段只用一个标签，不要把同一句同时套两层标签；",
+      "   · 标签外侧正常写标点，标签内只包文字本身；",
+      "   · 例：<m3>红叉像一排小旗子</m3>、<m2>暖气管咕噜响了一声</m2>、<m1>笔尖把纸压出浅浅的印子</m1>；",
+      "   · 除这四个标签外，正文中不得出现任何其他尖括号或 HTML 标签。",
+      "",
+      "【润色手法 techniques】列出本篇实际用到的润色手法，3–6 条，每条单独一个对象：",
+      "   · mark：该手法对应的标记，只能是 m1 / m2 / m3 / m4 之一（与正文标签一一对应）；",
+      "   · text：手法 + 具体落点的说明，15–40 字，先点手法名，再说改在哪里、产生了什么效果；",
+      "   · 必须指向本篇真实发生过的改动，不能写套话（如「语言更优美」）；",
+      "   · 不要写「本文」「学生」之类的评论口吻，只陈述改写了什么；",
+      "   · 同一种 mark 最多一条，四个 mark 能覆盖时尽量覆盖。",
+      "",
+      '7) 只输出 JSON：{"title":"标题","paras":["含标记的段落"],"techniques":[{"mark":"m1","text":"手法说明"}]}',
       "",
       "【学生原文】",
       src
@@ -901,39 +1033,134 @@ window.ZP = window.ZP || {};
       { role: "system", content: "你是语文教研员，擅长把学生习作改写成同龄优秀范文。只输出 JSON。" },
       { role: "user", content: ask }
     ];
+    /* 升格稿本身 450–950 字，加上 <m1>~<m4> 标记与 techniques 说明，
+       4200 的额度在长作文上容易被截断，放宽到 6000 */
     var raw = await ZP.chat(msgs, {
       vision: !!ctx.isVision, temperature: 0.5, json: true,
-      timeout: 180000, maxTokens: 4200, signal: signal,
+      timeout: 180000, maxTokens: 6000, signal: signal,
       trace: ctx.trace, traceLabel: "生成范文"
     });
-    raw = await continueIfTruncated(raw, msgs, 2, false, signal);
+    /* 被截断时续写；给到 3 轮，长稿也能补全 */
+    raw = await continueIfTruncated(raw, msgs, 3, false, signal, ctx.trace);
 
-    var d = ZP.parseJSON(raw);
-    var paras = (Array.isArray(d.paras) ? d.paras : []).map(function (x) { return String(x).trim(); }).filter(Boolean);
+    /* 解析：先按严格 JSON；失败时从残缺文本里抢救段落，
+       避免「续写未救回」就整篇丢掉，导致报告里范文为空 */
+    var d = null;
+    try {
+      d = ZP.parseJSON(raw);
+    } catch (e) {
+      d = salvagePolished(raw);
+      if (d) console.warn("[升格范文] JSON 不完整，已按残文抢救段落：", (e && e.message || "").slice(0, 80));
+    }
+    d = d || {};
+    var paras = [];
+    (Array.isArray(d.paras) ? d.paras : []).forEach(function (x) {
+      var t = String(x).trim();
+      if (!t) return;
+      paras.push(t);            /* 不做全文去重：排比/反复本就允许重复 */
+    });
+    paras = dedupeTailRepeat(paras);
     if (!paras.length) return null;
 
-    return {
+    /* 兼容两种返回：对象 {mark,text} 或旧版纯字符串；统一成 {mark,text} */
+    var validMark = { m1: 1, m2: 1, m3: 1, m4: 1 };
+    var techniques = (Array.isArray(d.techniques) ? d.techniques : [])
+      .map(function (t) {
+        if (t && typeof t === "object") {
+          var mk = String(t.mark || "").toLowerCase().trim();
+          return { mark: validMark[mk] ? mk : "", text: String(t.text || "").trim().slice(0, 80) };
+        }
+        return { mark: "", text: String(t || "").trim().slice(0, 80) };
+      })
+      .filter(function (t) { return t.text; })
+      .slice(0, 8);
+
+    var out = {
       title: String(d.title || norm.title || "升格范文"),
-      words: ZP.countChars(paras.join("")),
+      words: ZP.countChars(ZP.stripTechMarks(paras.join(""))),
       paras: paras,
-      techniques: normalizeTechniques(d.techniques)
+      techniques: techniques
     };
+
+    /* 字数校准：模型常偏离本年级区间，这里按需增删细节把它收进去（最多 2 轮）。
+       失败或没有改进时保持首轮结果，不影响主批改。 */
+    try {
+      var box = { polished: out, inRange: false, range: g.words };
+      await enforceRange(box, ctx, !!ctx.isVision, signal, 2);
+      if (box.polished && box.polished.paras && box.polished.paras.length) {
+        out = box.polished;
+        /* 校准可能改动段落结构与标记，techniques 需与正文标记对齐：只保留正文里还存在的 mark */
+        var body = out.paras.join(NL);
+        out.techniques = (out.techniques || []).filter(function (t) {
+          return !t.mark || body.indexOf("<" + t.mark + ">") >= 0;
+        });
+      }
+    } catch (e) {
+      if (e && e.code === "ABORTED") throw e;
+      /* 校准失败：保留首轮范文，只记录，不打断流程 */
+      if (window.console) console.warn("[字数校准] 未执行成功，保留首轮范文：", (e && e.message || "").slice(0, 100));
+    }
+
+    return out;
   };
 
-  /* 润色手法：模型对照原文与润色稿提炼，逐条带原句 / 润色句对照 */
-  function normalizeTechniques(list) {
-    if (!Array.isArray(list)) return [];
-    return list.map(function (t) {
-      if (!t || typeof t !== "object") return null;
-      var nm = String(t.name || "").trim();
-      if (!nm) return null;
-      return {
-        name: nm.slice(0, 20),
-        before: String(t.before || "").trim().slice(0, 120),
-        after: String(t.after || "").trim().slice(0, 160),
-        effect: String(t.effect || "").trim().slice(0, 80)
-      };
-    }).filter(Boolean).slice(0, 6);
+  /**
+   * 去掉「续写造成的整段重复」，但保留合法的重复段落（排比、反复等写作手法）。
+   * 只处理两种形态：整体「P + P」，以及尾部重复了开头若干整段。
+   * 不做全文 set 去重——那会把刻意重复的段落也删掉。
+   */
+  function dedupeTailRepeat(list) {
+    var a = (list || []).slice();
+    if (a.length < 4) return a;
+
+    /* 整体「P + P」：删掉后半 */
+    if (a.length % 2 === 0) {
+      var half = a.length / 2, same = true;
+      for (var i = 0; i < half; i++) {
+        if (a[i] !== a[half + i]) { same = false; break; }
+      }
+      if (same) return a.slice(0, half);
+    }
+    /* 尾部重复了开头若干整段：只删尾部那段副本 */
+    var SEP = String.fromCharCode(1);
+    for (var cut = 1; cut < a.length; cut++) {
+      var tail = a.slice(cut);
+      if (tail.length >= 2 && tail.length < a.length &&
+          a.slice(0, tail.length).join(SEP) === tail.join(SEP)) {
+        return a.slice(0, cut);
+      }
+    }
+    return a;
+  }
+
+  /**
+   * 从残缺的 JSON 文本里抢救升格范文。
+   * 场景：模型输出被 max_tokens 截断、续写也没补全，严格解析会整体失败。
+   * 做法：逐个匹配字符串字面量，跳过 title/techniques 等非正文键，只收正文段落。
+   */
+  function salvagePolished(raw) {
+    var s = String(raw || "");
+    var out = { title: "", paras: [], techniques: [] };
+    var ti = s.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (ti) out.title = ti[1];
+
+    var pi = s.indexOf('"paras"');
+    var seg = pi >= 0 ? s.slice(pi) : s;
+    /* 到 techniques 为止，避免把手法说明混进正文 */
+    var cut = seg.indexOf('"techniques"');
+    if (cut > 0) seg = seg.slice(0, cut);
+
+    var re = /"((?:[^"\\]|\\.)*)"/g, m;
+    while ((m = re.exec(seg))) {
+      var t = m[1].replace(/\\n/g, "").replace(/\\"/g, '"').trim();
+      if (!t) continue;
+      if (t === "paras" || t === "title" || t === "techniques") continue;
+      /* 段落至少 8 个字才收，过滤零碎键值 */
+      if (t.replace(/<\/?(?:m1|m2|m3|m4)>/g, "").length < 8) continue;
+      out.paras.push(t);
+    }
+    out.paras = dedupeTailRepeat(out.paras);
+    return out.paras.length ? out : null;
   }
 
   ZP.isUnsupportedImageError = function (msg) {
