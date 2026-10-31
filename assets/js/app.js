@@ -87,8 +87,6 @@
     if (mn) mn.textContent = S.student || "未署名";
     var md = $("#rMiniDims");
     if (md) md.innerHTML = "";
-    var dn = $("#reportDisclaimer");
-    if (dn) dn.textContent = "";
   }
 
   function headTitle(text) {
@@ -815,16 +813,18 @@
       return el;
     }
 
-    on("#demoBtn", "click", loadDemo);
+    /* 载入演示：入口在报告空状态与画板空状态两处，
+       画板空状态会随渲染重建，故用事件委托统一处理 */
+    document.addEventListener("click", function (e) {
+      var t = e.target.closest && e.target.closest("#demoBtn, [data-demo]");
+      if (!t) return;
+      e.preventDefault();
+      loadDemo();
+    });
     on("#resetBtn", "click", resetAll);
 
     initThumbStrip();
     on("#historyBtn", "click", function () { if (ZP.History) ZP.History.open(); });
-    /* 主按钮：批改中点击即停止 */
-    on("#gradeBtn", "click", function () {
-      var cur = S.docs[S.activeDoc];
-      if (cur && cur.grading) stopGrading();
-    });
     on("#exportHtmlBtn", "click", exportReport);
     on("#nextEssayBtn", "click", startNextEssay);
     initDocQueue();
@@ -899,50 +899,20 @@
     strip.hidden = false;
     if (inner) { inner.hidden = true; inner.style.display = "none"; }
 
-    /* 默认只显示当前这一条，避免多份时把上传区撑成一长列；
-       点「查看全部」再展开成列表。 */
-    var curIdx = 0;
-    for (var k = 0; k < S.images.length; k++) {
-      if (S.images[k] === S.image) { curIdx = k; break; }
-    }
-    var list = S.dqOpen ? S.images.map(function (im, i) { return [im, i]; })
-                        : [[S.image || S.images[0], curIdx]];
-
-    strip.classList.toggle("expanded", !!S.dqOpen);
-    strip.innerHTML = list.map(function (pair) {
-      var im = pair[0], i = pair[1];
+    strip.innerHTML = S.images.map(function (im, i) {
       var nm = (im.name || ("第" + (i + 1) + "页")).replace(/^\s+|\s+$/g, "");
       return '<div class="thumb' + (im === S.image ? " active" : "") + '" data-i="' + i + '" title="' + R.esc(nm) + '">' +
-        '<span class="thumb-pg">' + (i + 1) + "/" + S.images.length + "</span>" +
+        '<span class="thumb-dot"></span>' +
         '<span class="thumb-name">' + R.esc(nm) + "</span>" +
-        '<button type="button" class="del" data-del="' + i + '" aria-label="删除第' + (i + 1) + '页">' +
-          '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
-        "</button>" +
+        '<span class="thumb-pg">' + (i + 1) + " / " + S.images.length + "</span>" +
+        '<button type="button" class="del" data-del="' + i + '" aria-label="删除第' + (i + 1) + '页">×</button>' +
       "</div>";
     }).join("");
-
-    /* 多于一条时才出现展开入口 */
-    var more = $("#thumbMore");
-    if (more) {
-      more.hidden = S.images.length <= 1;
-      more.classList.toggle("open", !!S.dqOpen);
-      var txt = more.querySelector(".tm-txt");
-      if (txt) txt.textContent = S.dqOpen ? "收起" : ("查看全部 " + S.images.length + " 页");
-    }
   }
 
   function initThumbStrip() {
     var strip = $("#thumbStrip");
     if (!strip) return;
-    var more = $("#thumbMore");
-    if (more) {
-      more.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        S.dqOpen = !S.dqOpen;
-        renderThumbs();
-      });
-    }
     strip.addEventListener("click", function (e) {
       var del = e.target.closest("[data-del]");
       if (del) {
@@ -952,7 +922,11 @@
       }
       var th = e.target.closest(".thumb");
       if (!th) return;
-      S.image = S.images[Number(th.dataset.i)];
+      var thIdx = Number(th.dataset.i);
+      S.image = S.images[thIdx];
+      /* 必须同步当前页号：否则随后用「上一页/下一页」按钮或导出时，
+         页号仍停在旧值，会出现跳页、页码错位 */
+      S.imgPage = thIdx;
       renderThumbs();
       $("#stageTitle").textContent = S.images.length > 1
         ? "原稿 · 共 " + S.images.length + " 页" : (S.image.name || "作文原稿");
@@ -1074,7 +1048,33 @@
      保留分步明细 + 彩色进度条，宽度按 207px 侧栏紧凑排布 */
   /* 批改阶段的最小集合：模型一次返回时，某些阶段没真正跑，
      就按权重把总耗时分配下去，避免出现 0.0s 的空阶段。 */
-  var COST_STAGES = ["读图批改", "生成范文", "整理报告"];
+  var COST_STAGES = ["读图批改", "生成范文"];
+  /* 固定两段；识别/OCR 等中间步骤统一并入「读图批改」，不再单独成列 */
+  var costStages = COST_STAGES;
+
+  /* trace 里的原始步骤名归并到上面两个阶段：
+     续写补全属于批改过程、字数校准属于范文过程，都不单独成行，
+     这样「批改中」与「完成后」的卡片结构完全一致，不会忽多忽少 */
+  function costStageOf(step) {
+    var s = String(step || "");
+    if (s.indexOf("范文") >= 0 || s.indexOf("校准") >= 0) return "生成范文";
+    return "读图批改";
+  }
+
+  /* 把 trace 聚合成固定的两行；缺失的用权重补时长，tokens 只统计真拿到的 */
+  function costRowsByStage(trace, extraMs, w) {
+    var agg = {};
+    (trace || []).forEach(function (x) {
+      var name = costStageOf(x.step);
+      if (!agg[name]) agg[name] = { step: name, ms: 0, total: 0 };
+      agg[name].ms += x.ms || 0;
+      agg[name].total += x.total || 0;
+    });
+    return costStages.map(function (name) {
+      var r = agg[name] || { step: name, ms: 0, total: 0 };
+      return { step: name, ms: r.ms, total: r.total };
+    });
+  }
 
   var paintCostLive = null;   /* 批改中由 startTick 驱动 */
 
@@ -1096,7 +1096,12 @@
       n = n || 0;
       return n >= 10000 ? (Math.round(n / 100) / 10) + "k" : String(n);
     };
-    var speed = totalMs > 0 ? Math.round(totalTok / (totalMs / 1000)) : 0;
+    /* 均速只用真实用量与真实耗时算；含预估时不显示速度，避免出现 4000 t/s 这种虚高值 */
+    var realTok = 0, realMs = 0;
+    tr.forEach(function (x) {
+      if (!x.estimated) { realTok += x.total || 0; realMs += x.ms || 0; }
+    });
+    var speed = (realTok > 0 && realMs > 200) ? Math.round(realTok / (realMs / 1000)) : 0;
 
     var maxMs = 1, maxTok = 1;
     tr.forEach(function (x) {
@@ -1117,56 +1122,234 @@
       return m + "m " + rest + "s";
     };
 
+    /* 横向长条布局：每段一列（名称 / 条 / 耗时 · tokens），
+       段与段并排而不是上下堆叠，整体呈扁长卡片，更省侧栏纵向空间 */
     var rows = tr.map(function (x) {
-      var wMs = Math.max(4, Math.round((x.ms || 0) / maxMs * 100));
-      var wTok = Math.max(4, Math.round((x.total || 0) / maxTok * 100));
-      return '<div class="sc-row">' +
-        '<span class="sc-name" title="' + R.esc(x.step || "") + '">' + R.esc(x.step || "") + "</span>" +
-        '<span class="sc-bars">' +
-          '<span class="sc-bar sc-bar-t"><b style="width:' + wMs + '%"></b></span>' +
-          '<span class="sc-bar sc-bar-k"><b style="width:' + wTok + '%"></b></span>' +
+      var wMs = Math.max(3, Math.round((x.ms || 0) / maxMs * 100));
+      var wTok = Math.max(3, Math.round((x.total || 0) / maxTok * 100));
+      var has = !!(x.total || 0);
+      /* 状态：有真实数据→完成✓；批改中且尚无真实数据→进行中；否则未开始。
+         预估出来的数字不算完成，避免刚开始就整排打勾 */
+      var real = has && !x.estimated;
+      var state = real ? "done" : (data.live ? "run" : "idle");
+      var tokTxt = (!has && data.live)
+        ? '<i class="sc-wait">—</i>'
+        : (x.estimated ? '<i class="sc-wait">≈</i>' : "") + fmtN(x.total || 0);
+      return '<div class="sc-col ' + state + '">' +
+        '<span class="sc-name" title="' + R.esc(x.step || "") + '">' +
+          '<i class="sc-dot ' + state + '">' + (state === "done" ? "✓" : "") + "</i>" +
+          R.esc(x.step || "") +
         "</span>" +
-        '<span class="sc-vals">' +
-          '<span class="sc-t"><b>' + fmtDur(x.ms, 1) + "</b></span>" +
-          '<span class="sc-k"><b>' + fmtN(x.total || 0) + "</b>tokens</span>" +
+        '<span class="sc-bar">' +
+          '<b class="sc-bar-t" style="width:' + wMs + '%"></b>' +
+          '<b class="sc-bar-k" style="width:' + wTok + '%"></b>' +
         "</span>" +
+        '<span class="sc-meta"><b>' + fmtDur(x.ms, 1) + "</b><i>" + tokTxt + "</i></span>" +
       "</div>";
     }).join("");
 
+    /* 页脚：预估费用 + 均速（均速只在有真实数据时出现） */
+    var costYuan = totalTok * 2 / 1000000;
+    var costTxt = costYuan >= 0.01 ? costYuan.toFixed(2) : costYuan.toFixed(3);
+    var footBits = [];
+    if (totalTok) footBits.push('<span class="sc-money">≈ ¥' + costTxt + "</span>");
+    if (speed > 0) footBits.push('<span class="sc-spd2">' + fmtN(speed) + " t/s</span>");
+    if (data.estimated && totalTok) footBits.push('<span class="sc-hint">含预估</span>');
+
     box.innerHTML =
+      /* 汇总行：左标题，右侧「总耗时 · 总 tokens」一行放下 */
       '<div class="sc-head">' +
-        '<span>' + (data.live ? "正在批改" : "本次批改") + '</span>' +
-        '<em><b>' + fmtDur(totalMs, 1) + '</b><i>·</i><b>' + fmtN(totalTok) + '</b>tokens</em>' +
-      '</div>' +
-      (rows ? '<div class="sc-rows">' + rows + "</div>" : "") +
-      '<div class="sc-foot">' +
-        '<span class="sc-lg"><i class="t"></i>耗时</span>' +
-        '<span class="sc-lg"><i class="k"></i>tokens</span>' +
-        '<span class="sc-spd"><span>均速</span><b>' + fmtN(speed) + "</b><i>tokens/s</i></span>" +
-      "</div>";
+        '<span>' + (data.live ? "正在批改" : "本次批改") + "</span>" +
+        '<em><b>' + fmtDur(totalMs, 1) + "</b><i>·</i>" +
+          ((data.pending || !totalTok)
+            ? '<i class="sc-wait">tokens 统计中</i>'
+            : (data.estimated ? '<i class="sc-wait">≈</i>' : "") +
+              '<b>' + fmtN(totalTok) + "</b>tokens") +
+        "</em>" +
+      "</div>" +
+      (rows ? '<div class="sc-cols">' + rows + "</div>" : "") +
+      (footBits.length ? '<div class="sc-foot2">' + footBits.join("") + "</div>" : "");
     box.className = "side-cost" + (data.live ? " live" : "");
     box.hidden = false;
   }
 
   /* 批改开始：先把卡片摆出来，按阶段权重分配，实时走条 */
-  function startSideCostLive(startedAt) {
+  /**
+   * 批改中实时卡片。
+   * @param startedAt 开始时间
+   * @param trace     当前这份的 trace 数组（与 ai.js 写入的同一引用），
+   *                  每次刷新都从里面读取已完成的请求与真实 token 用量。
+   */
+  /**
+   * 估算本次请求的输入侧 token 数（提示词 + 图片）。
+   * 只用于「点击后立刻有数」的起步显示，收到真实 usage 后即被替换；
+   * 中文按约 1.6 字/token 折算，图片按面积的经验值折算。
+   */
+  function estimatePromptTokens(opt) {
+    opt = opt || {};
+    var base = 1600;                       /* 系统提示 + JSON 结构说明的固定开销 */
+    var textTok = Math.round(ZP.countChars(opt.text || "") / 1.6);
+    var imgTok = 0;
+    if (opt.vision) {
+      var pages = Math.max(1, opt.pages || 1);
+      /* 单页视觉输入约 1.1k tokens，多页递减（分辨率会下调） */
+      imgTok = Math.round(1100 * pages * (pages === 1 ? 1 : 0.85));
+    }
+    return base + textTok + imgTok;
+  }
+
+  /**
+   * @param startedAt 开始时间
+   * @param trace     当前这份的 trace 数组（与 ai.js 写入的同一引用）
+   * @param seed      可选：{ promptTokens, rate } —— 开始时就能给出的预估基线
+   *                  promptTokens 按提示词/图片体积估算，rate 是预估输出速度（tokens/s）
+   */
+  function startSideCostLive(startedAt, trace, seed) {
     var box = $("#sideCost");
     if (!box) return;
+    seed = seed || {};
+    costStages = COST_STAGES;
 
-    /* 各阶段权重（用于把已流逝的时间分配到还没真正执行的阶段） */
-    var w = { "读图批改": 0.62, "生成范文": 0.31, "整理报告": 0.07 };
-    var stages = COST_STAGES.map(function (name) { return { step: name, ms: 0, total: 0 }; });
+    /* 各阶段权重（仅用于把「尚未完成」的耗时预估分配到各阶段，不代表真实用量） */
+    /* 两阶段的耗时占比经验值：批改约占八成，范文约两成 */
+    var w = { "读图批改": 0.78, "生成范文": 0.22 };
 
     paintCostLive = function (elapsed) {
-      var rows = stages.map(function (st) {
-        return { step: st.step, ms: elapsed * (w[st.step] || 0), total: st.total || 0 };
+      var tr = Array.isArray(trace) ? trace : [];
+      /* 已完成的请求：用真实耗时与真实 tokens */
+      var doneMs = 0, doneTok = 0, anyEst = false;
+      tr.forEach(function (x) {
+        doneMs += x.ms || 0;
+        doneTok += x.total || 0;
+        if (x.estimated) anyEst = true;
       });
-      paintCost(box, { rows: rows, totalMs: elapsed, totalTok: 0, live: true });
+
+      /* 固定两行：批改 / 范文。
+         已有真实数据的阶段用真实值，其余按权重铺时间（tokens 不编造） */
+      var rows = costRowsByStage(tr, 0, w);
+      var realMs = rows.reduce(function (a, r) { return a + r.ms; }, 0);
+      var rest = Math.max(0, elapsed - realMs);
+      if (rest > 0) {
+        /* 剩余时间均分给还没有真实数据的阶段；都有数据时挂到最后一段（正在跑） */
+        var empty = rows.filter(function (r) { return !r.ms; });
+        if (empty.length) {
+          var per = rest / empty.length;
+          empty.forEach(function (r) { r.ms = per; });
+        } else {
+          rows[rows.length - 1].ms += rest;
+        }
+      }
+
+      /* 已返回的真实量之外，把「正在生成」的部分按预估速率算进去，
+         让 tokens 从点击那一刻就往上涨（数值前带 ≈ 表示含预估） */
+      var seedPrompt = seed.promptTokens || 0;
+      var rate = seed.rate || 42;                       /* tokens/s，保守值 */
+      var liveS = elapsed / 1000;
+
+      /* 已完成请求已包含它们的输入+输出；只对「还在跑的阶段」补预估 */
+      var runningRows = rows.filter(function (r) { return !r.total; });
+      if (runningRows.length) {
+        /* 输出量随耗时增长，按本年级篇幅封顶，避免虚高 */
+        var estOut = Math.min(900, Math.max(0, (liveS - (doneMs / 1000)) * rate));
+        /* 输入侧：点击瞬间就计入，体现「已经开始算了」 */
+        var estIn = doneTok ? 0 : seedPrompt;
+
+        /* 按各阶段的预计规模分配，而不是平均分：
+           批改要读完原文并输出批注，占大头；范文只写一篇，占小头。
+           读图批改要读完原文并输出批注，占大头；生成范文只写一篇，占小头。 */
+        var stageShare = { "读图批改": 0.80, "生成范文": 0.30 };
+        var totalShare = runningRows.reduce(function (a, r) { return a + (stageShare[r.step] || 0.6); }, 0) || 1;
+        runningRows.forEach(function (r) {
+          var k = (stageShare[r.step] || 0.6) / totalShare;
+          var t = Math.round(estIn * k + estOut * k);
+          if (t > 0) { r.total = t; r.estimated = true; }
+        });
+      }
+
+      /* 每行标注是否已有真实数据，避免未开始的阶段显示成「0 tokens」 */
+      rows.forEach(function (r) { r.started = !!r.total; });
+
+      /* 总 tokens 直接由各行累加：rows 里既有真实值也有预估增量，
+         若再加一次 doneTok 就会把真实量算两遍（曾出现 1400 显示成 2800 的问题） */
+      var liveTok = 0, anyEst2 = anyEst;
+      rows.forEach(function (r) {
+        liveTok += r.total || 0;
+        if (r.estimated) anyEst2 = true;
+      });
+
+      paintCost(box, {
+        rows: rows, totalMs: elapsed, totalTok: liveTok, live: true,
+        pending: false, estimated: anyEst2
+      });
     };
     paintCostLive(Date.now() - (startedAt || Date.now()));
   }
 
   function stopSideCostLive() { paintCostLive = null; }
+
+  /**
+   * 批改没有正常结束（失败 / 用户停止）时，把卡片定格成终态。
+   * 目的：卡片不能一直显示「正在批改」，否则用户会以为还在跑。
+   * @param kind "failed" | "stopped"
+   */
+  function settleCostCard(idx, kind, traceRef) {
+    var box = $("#sideCost");
+    if (!box) return;
+    stopSideCostLive();
+
+    /* trace 由调用方传入：此刻 doc.grading 已被 endGrading 清空，不能再从那里取 */
+    var doc = S.docs[idx];
+    var tr = Array.isArray(traceRef) ? traceRef.slice()
+      : ((doc && doc.grading && doc.grading.trace) || []);
+    var totalTok = 0, totalMs = 0;
+    tr.forEach(function (x) { totalTok += x.total || 0; totalMs += x.ms || 0; });
+
+    var label = kind === "stopped" ? "已停止" : "批改失败";
+    var tip = kind === "stopped"
+      ? "已停止的部分不会计费"
+      : "本次未产生报告，可调整设置后重试";
+
+    /* 保留已完成阶段的明细，让老师知道卡在哪一步 */
+    var rows = costRowsByStage(tr, 0, { "读图批改": 0.78, "生成范文": 0.22 });
+    rows.forEach(function (r) { r.done = !!r.total; });
+
+    var maxMs = Math.max.apply(null, rows.map(function (r) { return r.ms || 0; }).concat([1]));
+    var maxTok = Math.max.apply(null, rows.map(function (r) { return r.total || 0; }).concat([1]));
+    var fmtN = function (n) { return n >= 10000 ? (Math.round(n / 100) / 10) + "k" : String(n); };
+    var fmtDur2 = function (ms) {
+      var s = (ms || 0) / 1000;
+      if (s < 60) return (Math.round(s * 10) / 10) + "s";
+      var m = Math.floor(s / 60), r2 = Math.round(s - m * 60);
+      return m + "m " + r2 + "s";
+    };
+
+    box.innerHTML =
+      '<div class="sc-head">' +
+        '<span class="sc-final ' + kind + '">' + label + "</span>" +
+        '<em><b>' + fmtDur2(totalMs) + '</b><i>·</i><b>' + fmtN(totalTok) + "</b>tokens</em>" +
+      "</div>" +
+      '<div class="sc-cols">' +
+        rows.filter(function (r) { return r.ms > 0 || r.total > 0; }).map(function (r) {
+          var wMs = Math.max(3, Math.round((r.ms || 0) / maxMs * 100));
+          var wTok = Math.max(3, Math.round((r.total || 0) / maxTok * 100));
+          var st = r.done ? "done" : "idle";
+          return '<div class="sc-col ' + st + '">' +
+            '<span class="sc-name"><i class="sc-dot ' + st + '">' + (r.done ? "✓" : "") + "</i>" +
+              R.esc(r.step) + "</span>" +
+            '<span class="sc-bar">' +
+              '<b class="sc-bar-t" style="width:' + wMs + '%"></b>' +
+              '<b class="sc-bar-k" style="width:' + wTok + '%"></b>' +
+            "</span>" +
+            '<span class="sc-meta"><b>' + fmtDur2(r.ms) + "</b><i>" +
+              (r.total ? fmtN(r.total) : "—") + "</i></span>" +
+          "</div>";
+        }).join("") +
+      "</div>" +
+      '<div class="sc-foot2"><span class="sc-hint">' + tip + "</span></div>";
+
+    box.className = "side-cost final " + kind;
+    box.hidden = false;
+  }
 
   /* 用接口返回的真实 trace 渲染定格卡片。
      若某些阶段没有真实计时（模型一次返回），按权重把总耗时补分过去。 */
@@ -1176,8 +1359,13 @@
     stopSideCostLive();
 
     var raw = (res && res.trace) ? res.trace : [];
-    var totalMs = 0, totalTok = 0;
-    raw.forEach(function (x) { totalMs += x.ms || 0; totalTok += x.total || 0; });
+    costStages = COST_STAGES;
+    var totalMs = 0, totalTok = 0, anyEst = false;
+    raw.forEach(function (x) {
+      totalMs += x.ms || 0;
+      totalTok += x.total || 0;
+      if (x.estimated) anyEst = true;
+    });
     if (!totalMs && res && res.elapsed) totalMs = res.elapsed;
     if (!totalTok && res && res.tokens) totalTok = res.tokens.total || 0;
 
@@ -1187,28 +1375,26 @@
       return;
     }
 
-    /* 阶段名对齐到最小集合，缺的用权重补时长，保证不出现 0.0s */
-    var weight = { "读图批改": 0.62, "生成范文": 0.31, "整理报告": 0.07 };
-    var byName = {};
-    raw.forEach(function (x) {
-      var name = x.step || "其他";
-      if (!byName[name]) byName[name] = { step: name, ms: 0, total: 0 };
-      byName[name].ms += x.ms || 0;
-      byName[name].total += x.total || 0;
-    });
+    /* 完成态与实时态用同一套两行结构：批改 / 范文 */
+    var weight = { "读图批改": 0.78, "生成范文": 0.22 };
+    var rows = costRowsByStage(raw, 0, weight);
 
-    var rows = Object.keys(byName).map(function (k) { return byName[k]; });
-    var sumMs = rows.reduce(function (a, b) { return a + (b.ms || 0); }, 0);
-
-    /* 只有单个「其他」阶段时，拆成标准三阶段 */
-    if (rows.length === 1) {
-      var only = rows[0];
-      rows = COST_STAGES.map(function (name) {
-        return { step: name, ms: Math.round(only.ms * weight[name]), total: Math.round(only.total * weight[name]) };
-      });
-      sumMs = rows.reduce(function (a, b) { return a + b.ms; }, 0);
+    /* 某个阶段完全没数据（如纯文本批改没有「批改」耗时）时，
+       按权重把总耗时拆过去，保证两行都有合理的时长 */
+    var zeroTotal = totalMs > 0 && rows.every(function (r) { return !r.ms; });
+    if (zeroTotal) {
+      rows.forEach(function (r) { r.ms = totalMs * weight[r.step]; });
+    } else {
+      var onlyOne = rows.filter(function (r) { return r.ms > 0; }).length === 1;
+      if (onlyOne && totalMs > 0) {
+        var had = rows[0].ms > 0 ? rows[0] : rows[1];
+        var other = had === rows[0] ? rows[1] : rows[0];
+        var rest = totalMs - had.ms;
+        if (rest > 0) other.ms = rest;
+      }
     }
 
+    var sumMs = rows.reduce(function (a, b) { return a + (b.ms || 0); }, 0);
     /* 总耗时与各阶段之和对齐 */
     if (totalMs && Math.abs(sumMs - totalMs) > 200) {
       var scale = sumMs > 0 ? totalMs / sumMs : 1;
@@ -1217,10 +1403,13 @@
 
     /* 任何阶段都不允许是 0.0s */
     rows.forEach(function (r) {
-      if (!r.ms || r.ms < 100) r.ms = 100;
+      if (!r.ms || r.ms < 100) r.ms = Math.round(100);
     });
 
-    paintCost(box, { rows: rows, totalMs: rows.reduce(function (a, b) { return a + b.ms; }, 0), totalTok: totalTok });
+    paintCost(box, {
+      rows: rows, totalMs: rows.reduce(function (a, b) { return a + b.ms; }, 0),
+      totalTok: totalTok, estimated: anyEst
+    });
   }
 
   ZP.renderSideCost = renderSideCost;
@@ -1307,7 +1496,10 @@
   async function runGrade() {
     var doc = S.docs[S.activeDoc];
     if (!doc) return;
-    if (doc.grading) { toast("这份正在批改中，可点「停止」后再来。"); return; }
+    /* 批改中再次点击 = 停止。
+       注意：这里必须自己处理停止，不能再依赖另绑的 click 监听器，
+       否则两个处理器都会触发，后者只会弹出「正在批改中」。 */
+    if (doc.grading) { stopGrading(); return; }
     var docIndex = S.activeDoc;
     var ctl = new AbortController();
 
@@ -1347,8 +1539,18 @@
     doc.grading = { ctl: ctl, startedAt: Date.now(), trace: trace };
     doc.cancelRequested = false;
     refreshGradeUI();
-    /* 一开批就先把耗时卡摆出来，边跑边算 */
-    startSideCostLive(doc.grading.startedAt);
+    /* 一开批就先把耗时卡摆出来，边跑边算。
+       这里给出「预估计数」：点击瞬间就有输入侧的 token（提示词 + 图片），
+       之后随耗时按速率增长，收到真实 usage 后自动切换到真实值。 */
+    startSideCostLive(doc.grading.startedAt, trace, {
+      promptTokens: estimatePromptTokens({
+        text: text,
+        pages: (S.images && S.images.length) ? S.images.length : (S.image ? 1 : 0),
+        vision: useVision && !text
+      }),
+      vision: useVision && !text,
+      rate: 42
+    });
 
     /* ---------- 路径 A：图片 + 视觉模型直读 ---------- */
     if (useVision && !text) {
@@ -1380,6 +1582,11 @@
         });
       } catch (e) {
         R.loading(false);
+        /* 视觉路径失败会直接 return，必须在这里先把实时卡片定格，
+           否则 paintCostLive 仍按「正在批改」重绘，卡片永远停在批改中 */
+        var vAborted = !!(e && e.code === "ABORTED");
+        stopSideCostLive();
+        settleCostCard(docIndex, vAborted ? "stopped" : "failed", trace);
         endGrading(docIndex);
         handleVisionError(e, doc);
         return;
@@ -1401,7 +1608,10 @@
           $("#textCount").textContent = ZP.countChars(text) + " 字";
         } catch (e) {
           R.loading(false);
-            endGrading(docIndex);
+          var tAborted = !!(e && e.code === "ABORTED");
+          stopSideCostLive();
+          settleCostCard(docIndex, tAborted ? "stopped" : "failed", trace);
+          endGrading(docIndex);
           handleVisionError(e, doc);
           return;
         }
@@ -1418,7 +1628,9 @@
           $("#textCount").textContent = ZP.countChars(text) + " 字";
         } catch (e) {
           R.loading(false);
-            endGrading(docIndex);
+          stopSideCostLive();
+          settleCostCard(docIndex, "failed", trace);
+          endGrading(docIndex);
           openAccordion();
           openModal("ocr");
           toast("OCR 识别失败：" + e.message, "err");
@@ -1427,6 +1639,8 @@
       }
 
       if (!text) {
+        stopSideCostLive();
+        settleCostCard(docIndex, "failed", trace);
         endGrading(docIndex);
         R.loading(false);
         toast("请先上传作文图片，或粘贴作文正文。", "err");
@@ -1456,6 +1670,9 @@
           (isStop ? "已停止批改：" : "批改失败：") + (doc.title || "当前作文"),
           emsg2, isStop ? "warn" : "err"
         );
+        /* 同样要定格卡片，否则会一直显示「正在批改」 */
+        stopSideCostLive();
+        settleCostCard(docIndex, isStop ? "stopped" : "failed", trace);
         endGrading(docIndex);
         if (!isStop) showErrorDialog(emsg2);
         else toast("已停止这份的批改。");
@@ -1548,7 +1765,8 @@
       }
     } catch (e) {
       R.loading(false);
-      if (e && e.code === "ABORTED") {
+      var aborted = !!(e && e.code === "ABORTED");
+      if (aborted) {
         toast("已停止这份的批改，已停止的部分不会计费。");
         ZP.Notice.push("已停止批改", (doc.title || "当前作文") + " · 点击「开始 AI 批改」可重新批改", "warn");
       } else {
@@ -1556,6 +1774,10 @@
         toast(emsg, "err");
         ZP.Notice.push("批改失败：" + (doc.title || "当前作文"), emsg, "err");
       }
+      /* ★ 失败/中断时必须把实时卡片停下来并改成终态：
+         否则 paintCostLive 会一直按「正在批改」重绘，卡片永远停在批改中 */
+      stopSideCostLive();
+      settleCostCard(docIndex, aborted ? "stopped" : "failed", trace);
     } finally {
       endGrading(docIndex);
     }
@@ -1745,11 +1967,12 @@
       var ms = Date.now() - tickFrom;
       var bt = $("#btnTimer");
       if (bt) { bt.hidden = false; bt.textContent = fmtClock(ms); }
-      /* 耗时卡边批边跑：总耗时实时增长，各阶段各自计时 */
+      /* 耗时卡边批边跑：总耗时实时增长，各阶段各自计时。
+         200ms 刷新一次，tokens 计数才会有「正在累加」的观感 */
       if (paintCostLive) paintCostLive(ms);
     };
     paint();
-    tickId = setInterval(paint, 1000);
+    tickId = setInterval(paint, 200);
   }
   function stopTick() { clearInterval(tickId); tickId = null; }
 
@@ -1758,7 +1981,22 @@
     if (!cur || !cur.grading) return;
     cur.cancelRequested = true;
     try { cur.grading.ctl.abort(); } catch (e) {}
-    toast("已停止这份的批改，不再消耗额度。");
+
+    /* 兜底：若底层请求没有及时响应 abort（部分代理/FRP 环境会吞掉中断信号），
+       界面不能一直卡在「停止批改」。这里立即把按钮与计时复位，
+       真实请求晚到或失败时，runGrade 的 finally 仍会收拾干净。 */
+    var idx = S.activeDoc;
+    var timer = setTimeout(function () {
+      var d = S.docs[idx];
+      if (!d || !d.grading || !d.cancelRequested) return;
+      R.loading(false);
+      endGrading(idx);
+      renderSideCost(S.result || null);
+      toast("已停止这份的批改。");
+    }, 1200);
+
+    toast("正在停止这份的批改…");
+    return timer;
   }
 
   /* ---------------- 姓名 ---------------- */
@@ -2122,116 +2360,15 @@
     if (sc) sc.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  /* 作文列表已在界面移除：多份批改记录统一进「历史批改」。
+     保留空实现，是因为队列切换/保存处仍有调用点，去掉会引发引用错误；
+     顺带把当前份的编辑状态回写到队列，保证历史与导出拿到的是最新数据。 */
   function renderDocQueue() {
-    var list = $("#dqList"), cnt = $("#dqCount"), empty = $("#dqEmpty");
-    if (!list) return;
-
-    /* 当前份若已有内容则实时同步，避免列表信息滞后 */
-    syncCurrentDoc();
-
-    var docs = S.docs || [];
-    var filled = docs.filter(function (d) {
-      return (d.images && d.images.length) || (d.text || "").trim() || d.result;
-    });
-
-    if (cnt) {
-      var curNo = 1;
-      docs.forEach(function (d, i) {
-        var has = (d.images && d.images.length) || (d.text || "").trim() || d.result;
-        if (has && i <= S.activeDoc) curNo = curNo;
-      });
-      cnt.textContent = (filled.length || 0) + " 份";
-    }
-    /* 空态不显示占位文案，避免列表区块与主按钮贴挤 */
-    if (empty) empty.hidden = true;
-
-    /* 折叠态只露当前这一份，其余份数由标题旁的计数与展开入口体现；
-       展开后才逐条列出。 */
-    var sec = document.querySelector(".doc-section");
-    var collapsed = !sec || !sec.classList.contains("expanded");
-    var total = docs.filter(function (d) {
-      return (d.images && d.images.length) || (d.text || "").trim() || d.result;
-    }).length;
-
-    /* 只有多于一份时才提供展开入口；单份展开无意义，点了像没反应 */
-    var tg = $("#dqToggle");
-    if (tg) {
-      var multi = total > 1;
-      tg.hidden = !multi;
-      if (!multi && sec.classList.contains("expanded")) {
-        sec.classList.remove("expanded");
-        list.classList.remove("expanded");
-        collapsed = true;
-      }
-      if (multi) {
-        var lbl = tg.querySelector(".tgl-txt");
-        if (lbl) lbl.textContent = collapsed ? ("展开全部 " + total + " 份") : "收起";
-        tg.setAttribute("aria-expanded", collapsed ? "false" : "true");
-      }
-    }
-
-    list.innerHTML = docs.map(function (d, i) {
-      var hasContent = (d.images && d.images.length) || (d.text || "").trim() || d.result;
-      if (!hasContent) return "";
-      if (collapsed && i !== S.activeDoc) return "";
-      /* 折叠时只露当前份，其余份数由标题旁的计数体现 */
-      var thumb = (d.images && d.images[0])
-        ? '<img class="dq-thumb" src="' + d.images[0].dataUrl + '" alt="">'
-        : '<span class="dq-thumb">文</span>';
-      /* 标题优先级：作文标题 > 学生姓名 > 页数描述，便于一眼区分多份 */
-      var title = d.title || d.student || (d.images && d.images.length ? "原稿 " + d.images.length + " 页" : "未命名作文");
-      var meta = [];
-      if (d.student) meta.push(R.esc(d.student));
-      meta.push(R.esc(ZP.getGrade(d.grade).name));
-      if (d.images && d.images.length > 1) meta.push('<span class="dq-badge">' + d.images.length + " 页</span>");
-      var score = d.grading
-        ? '<span class="dq-score running">批改中</span>'
-        : (d.result
-            ? '<span class="dq-score">' + d.result.score + "</span>"
-            : '<span class="dq-score pending">待批改</span>');
-
-      return '<div class="dq-item' + (i === S.activeDoc ? " active" : "") + '" data-doc="' + i + '">' +
-        (i === S.activeDoc ? '<span class="dq-now"></span>' : "") +
-        thumb +
-        '<div class="dq-main"><span class="dq-title">' + R.esc(title) + "</span>" +
-        '<span class="dq-meta">' + meta.join("<i></i>") + "</span></div>" +
-        score +
-        '<button class="dq-del" type="button" data-del-doc="' + i + '" aria-label="删除这份">×</button>' +
-      "</div>";
-    }).join("");
+    try { syncCurrentDoc(); } catch (e) { /* 无队列时忽略 */ }
   }
 
-  function initDocQueue() {
-    var list = $("#dqList");
-    if (!list) return;
-
-    var toggle = $("#dqToggle");
-    if (toggle) toggle.addEventListener("click", function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      var sec = document.querySelector(".doc-section");
-      if (!sec) return;
-      var open = sec.classList.toggle("expanded");
-      list.classList.toggle("expanded", open);
-      /* 文案与 aria 统一交给 renderDocQueue 处理，避免两处各写一遍 */
-      renderDocQueue();
-    });
-
-    list.addEventListener("click", function (e) {
-      var del = e.target.closest("[data-del-doc]");
-      if (del) {
-        e.stopPropagation();
-        removeDoc(Number(del.dataset.delDoc));
-        return;
-      }
-      var item = e.target.closest("[data-doc]");
-      if (!item) return;
-      var idx = Number(item.dataset.doc);
-      if (idx === S.activeDoc) return;
-      syncCurrentDoc();
-      loadDoc(idx);
-    });
-  }
+  /* 列表 DOM 已移除：这里只做初始化占位，多份的浏览改由「历史批改」承担 */
+  function initDocQueue() { /* no-op */ }
 
   /* 删除某一份；删完仍保留一份空白，避免界面失去落点 */
   function removeDoc(idx) {
@@ -2275,6 +2412,7 @@
 
     S.images = [];
     S.image = null;
+    S.imgPage = 0;
     S.text = "";
     S.title = "";
     S.student = "";
