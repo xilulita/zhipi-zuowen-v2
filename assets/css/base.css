@@ -92,13 +92,15 @@ svg{display:block}
   background:radial-gradient(120% 100% at 0% 0%,rgba(168,65,44,.06),transparent 70%);
 }
 .brand{display:flex;align-items:center;gap:10px;padding:20px 18px 16px;position:relative}
+/* 品牌标识：与桌面图标同一套视觉（朱红底 + 白色纸页） */
+/* 品牌标识：与桌面图标同一套视觉（棕红渐变 + 打开的书 + 钢笔），
+   底色与圆角由内联 SVG 自身绘制，这里只负责尺寸与外阴影 */
 .brand-mark{
   width:36px;height:36px;flex:0 0 36px;border-radius:10px;
-  display:grid;place-items:center;color:#fff5ee;
-  background:linear-gradient(150deg,#2a2f38,#15181d 60%,#3a2a25);
-  box-shadow:0 6px 14px -6px rgba(20,22,26,.7),inset 0 1px 0 rgba(255,255,255,.14);
+  display:grid;place-items:center;overflow:hidden;
+  box-shadow:0 6px 14px -9px rgba(120,50,35,.6);
 }
-.brand-mark svg{width:22px;height:22px}
+.brand-mark svg{width:36px;height:36px;display:block}
 .brand-text h1{
   font-size:16.5px;font-weight:650;letter-spacing:.14em;line-height:1.2;color:var(--ink);
 }

@@ -6,8 +6,8 @@
 <title>智批作文 · AI 批改工作台</title>
 <meta name="description" content="智批作文：面向小学高年级与初中的 AI 作文批改工作台，四维评分、双侧批注、升格范文与小练笔。" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />
-<link rel="stylesheet" href="assets/css/base.css?v=1514c365" />
-<link rel="stylesheet" href="assets/css/app.css?v=dc6fcecd" />
+<link rel="stylesheet" href="assets/css/base.css?v=705abda2" />
+<link rel="stylesheet" href="assets/css/app.css?v=81e76374" />
 </head>
 <body>
 <div class="splash" id="splash" aria-hidden="true">
@@ -20,10 +20,40 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">
-        <svg viewBox="0 0 40 40" fill="none" aria-hidden="true">
-          <path d="M8 6.5h17.5L32 13v20.5H8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M25 6.5V13h7" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-          <path d="M13.5 19.5h13M13.5 24h9.5M13.5 28.5h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <!-- 与桌面图标同一套视觉：棕红底 + 打开的书 + 钢笔 -->
+        <svg viewBox="0 0 40 40" aria-hidden="true">
+          <defs>
+            <linearGradient id="bmBg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#b05a3d"/>
+              <stop offset="1" stop-color="#3e211a"/>
+            </linearGradient>
+          </defs>
+          <rect width="40" height="40" rx="9" fill="url(#bmBg)"/>
+          <!-- 书页：顶部弧形展开 -->
+          <path d="M5.2 17.6c2.4-2.2 5.6-3.2 9.3-3.2v15.4c-3.7 0-6.9 1-9.3 3.2z" fill="#f6efe1"/>
+          <path d="M34.8 17.6c-2.4-2.2-5.6-3.2-9.3-3.2v15.4c3.7 0 6.9 1 9.3 3.2z" fill="#f6efe1"/>
+          <!-- 书脊 -->
+          <rect x="19.3" y="14.4" width="1.4" height="15.4" fill="#c7ae88"/>
+          <!-- 横线 -->
+          <g fill="#c9ba9b">
+            <rect x="7.2" y="19.6" width="9.4" height="1.1" rx="0.55"/>
+            <rect x="7.2" y="23.2" width="9.4" height="1.1" rx="0.55"/>
+            <rect x="7.2" y="26.8" width="6.2" height="1.1" rx="0.55"/>
+            <rect x="23.4" y="19.6" width="9.4" height="1.1" rx="0.55"/>
+            <rect x="23.4" y="23.2" width="9.4" height="1.1" rx="0.55"/>
+            <rect x="23.4" y="26.8" width="6.2" height="1.1" rx="0.55"/>
+          </g>
+          <!-- 书签圆点 -->
+          <circle cx="20" cy="10.6" r="2.5" fill="#c95941"/>
+          <circle cx="19.3" cy="9.9" r="0.8" fill="#eb9f86"/>
+          <!-- 钢笔：斜置右下 -->
+          <g transform="rotate(-40 27.5 27.5)">
+            <rect x="25.2" y="16.4" width="4.6" height="2.4" rx="0.5" fill="#b08a44"/>
+            <rect x="25.2" y="18.8" width="4.6" height="9.4" fill="#96261c"/>
+            <rect x="25.2" y="18.8" width="1.6" height="9.4" fill="#ba5034"/>
+            <rect x="25.2" y="28.2" width="4.6" height="1.5" fill="#b08a44"/>
+            <path d="M25.2 29.7h4.6l-2.3 4.6z" fill="#cec6b6"/>
+          </g>
         </svg>
       </div>
       <div class="brand-text">

@@ -33,3 +33,6 @@ assets/*.part.html
 # 已废弃的补丁拆分文件（功能已并入 app.js，index.html 不再加载）
 assets/js/patch-docs.js
 assets/js/patch-history.js
+
+# 图标设计候选稿（临时素材，不入库）
+assets/icon-candidates/
