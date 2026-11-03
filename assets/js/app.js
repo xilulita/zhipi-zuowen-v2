@@ -1966,8 +1966,11 @@
       stopTick();
     }
 
-    /* 「已完成」标识与导出按钮：只有真的出了结果才出现 */
-    var done = !!(cur && cur.result);
+    /* 「已完成」标识与导出按钮：只有真的出了结果才出现。
+       除了当前队列项的 result，还要认 S.result —— 从「历史批改」载入时，
+       结果写在 S.result 上，并不会回填到 S.docs，只看 cur.result 会导致
+       打开历史记录后导出按钮不出现。 */
+    var done = !!(S.result || (cur && cur.result));
     var pill = $("#statusPill");
     if (pill) {
       pill.hidden = !done;
@@ -2224,6 +2227,10 @@
     $("#reportSub").textContent = "历史批改 · " +
       new Date(rec.savedAt || Date.now()).toLocaleString("zh-CN");
     renderSideCost(rec);
+
+    /* 历史记录同样是有结果的报告：必须刷新一次按钮区，
+       否则「导出」与「已完成」标识不会出现（只有演示/新批改才走到那里）。 */
+    refreshGradeUI();
 
     var sc = $("#stageScroll");
     if (sc) sc.scrollTo({ top: 0, behavior: "smooth" });
