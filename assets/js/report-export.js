@@ -51,7 +51,7 @@
     return ""
       + "*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}"
       + "body{margin:0;background:#f3f0e9;font-family:'PingFang SC','Microsoft YaHei',sans-serif;"
-      +   "color:#4a515c;font-size:13px;line-height:1.75}"
+      +   "color:#2b3038;font-size:13px;line-height:1.75}"
       /* 每页独立成块，打印时各自一页 */
       /* 不分页：所有内容放进同一张长文档，一次性连续展示 */
       + ".doc{width:" + PAGE_W + "px;margin:0 auto;background:#fffdf9;"
@@ -59,7 +59,7 @@
       +   "padding:" + L.padY + "px " + L.padX + "px}"
       /* 文档总标题 */
       + ".doc-head{margin:0 0 22px;text-align:center}"
-      + ".doc-head h1{margin:0;font-size:21px;font-weight:650;letter-spacing:.14em;color:#3f4652}"
+      + ".doc-head h1{margin:0;font-size:21px;font-weight:650;letter-spacing:.14em;color:#2b3038}"
       + ".doc-meta{margin-top:7px;font-size:11px;color:#a9a293;letter-spacing:.04em}"
       + ".sheet{width:100%;margin:0;padding:0;background:transparent;border:0}"
       /* 段落之间用分隔线隔开（原来靠分页区分） */
@@ -67,17 +67,26 @@
       /* 页眉 */
       + ".sheet-head{display:flex;align-items:flex-end;justify-content:space-between;"
       +   "gap:14px;padding-bottom:2px;margin-bottom:14px}"
-      + ".sheet-head h2{margin:0;font-size:15px;letter-spacing:.1em;color:#46505c}"
+      + ".sheet-head h2{margin:0;font-size:15px;letter-spacing:.1em;color:#2b3038}"
       + ".sheet-head .sh-sub{font-size:10.5px;color:#a9a293;letter-spacing:.04em}"
       + ".sheet-head .sh-tag{font-size:10px;color:#8d8477;flex:0 0 auto}"
-      + "@media print{body{background:#fff}"
-      +   ".doc{border:0;border-radius:0;width:auto}}"
-      /* 窄屏（手机）：整体等比缩放，保持三栏结构不散，可上下滑动读完整 */
-      + "@media screen and (max-width:" + (PAGE_W + 20) + "px){"
-      +   "body{background:#fffdf9;overflow-x:hidden}"
-      +   ".doc{transform-origin:top left;border-radius:0;border:0}"
-      + "}"
-      + "@page{margin:10mm}";
+      /* ---- 打印 / 另存为 PDF ----
+         每张 sheet 独立成页；卡片、图表、表格避免被横切 */
+      + "@page{size:A4;margin:12mm 10mm 14mm}"
+      + "@media print{"
+      +   "html,body{background:#fff !important}"
+      +   "body{-webkit-print-color-adjust:exact;print-color-adjust:exact}"
+      +   ".doc{border:0;border-radius:0;width:auto;padding:0;box-shadow:none;background:#fff}"
+      +   ".sheet{break-inside:auto;page-break-inside:auto}"
+      /* 除最后一张外，每张报告分段另起一页 */
+      +   ".sheet + .sheet{break-before:page;page-break-before:always;"
+      +     "margin-top:0;padding-top:0;border-top:0}"
+      +   ".drill,.issue,.card,.pol,.hero,.tk-legend,.tech,.tip-card,img{"
+      +     "break-inside:avoid;page-break-inside:avoid}"
+      +   ".blk-head{break-after:avoid;page-break-after:avoid}"
+      +   ".radar{max-width:200px}"
+      +   "a{color:inherit;text-decoration:none}"
+      + "}";
   }
 
   /* ============================================================
@@ -171,7 +180,7 @@
       +   "font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8px;font-weight:700;"
       +   "box-shadow:0 1px 3px rgba(20,22,26,.25)}"
       + ".ecard-tag{font-size:9px;font-weight:600;letter-spacing:.04em;margin-bottom:3px}"
-      + ".ecard-note{color:#4c535e}"
+      + ".ecard-note{color:#3f4652}"
       + ".ecard-fix{margin-top:6px;padding:5px 7px;background:#faf7ef;border-left:2px solid #dcc9a5;"
       +   "border-radius:0 4px 4px 0;font-size:10.5px;line-height:1.55;color:#6b6047}"
       + ".ecard-fix i{display:block;font-style:normal;font-size:9px;color:#a89e8b;margin-bottom:2px}"
@@ -205,27 +214,40 @@
       + ".blk{margin-bottom:18px}"
       + ".blk:last-child{margin-bottom:0}"
       + ".blk-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}"
-      + ".blk-head h4{margin:0;font-size:11.5px;font-weight:650;letter-spacing:.1em;color:#4c535e}"
+      + ".blk-head h4{margin:0;font-size:11.5px;font-weight:650;letter-spacing:.1em;color:#3f3b35}"
       + ".blk-head i{flex:1;height:1px;background:linear-gradient(90deg,#e0d8c8,transparent)}"
-      + ".blk-head .meta{font-size:9.5px;color:#8d8477;letter-spacing:.03em}"
+      + ".blk-head .meta{font-size:10.5px;color:#8d8477;letter-spacing:.03em}"
       + ".card{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:12px 14px;"
       +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       /* 分数区 */
-      + ".score-row{display:flex;align-items:center;gap:14px;margin-bottom:16px}"
-      + ".big{font-size:40px;font-weight:650;line-height:1;letter-spacing:-.02em;color:#3a414d}"
+      /* 分数卡：左信息 / 右雷达，横向并排 */
+      + ".hero{display:flex;align-items:center;gap:18px;margin-bottom:16px;padding:14px 16px;"
+      +   "background:linear-gradient(180deg,#fffefb,#fdfbf5);border:1px solid #ebe5d8;border-radius:11px;"
+      +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
+      + ".hero-l{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start}"
+      + ".hero-r{flex:0 0 210px;display:flex;align-items:center;justify-content:center}"
+      + ".stu{font-size:13px;font-weight:600;color:#2b3038;margin-bottom:8px}"
+      + ".stu em{font-style:normal;font-weight:400;font-size:11px;color:#8d8477;margin-left:8px}"
+      + ".hero .big{font-size:38px;font-weight:650;line-height:1;letter-spacing:-.02em;color:#2b3038}"
+      + ".hero .big small{font-size:12px;color:#8d8477;font-weight:400;margin-left:2px}"
+      + ".cap{font-size:9.5px;color:#a89e8b;letter-spacing:.08em;margin-top:6px}"
+      + ".hero-r .hd{display:block;font-size:11.5px;color:#5d6470;line-height:1.9}"
+      + ".hero-r .hd i{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:6px;vertical-align:1px}"
+      + ".hero-r .hd b{float:right;font-size:12px;color:#2b3038;margin-left:12px}"
+      + ".big{font-size:40px;font-weight:650;line-height:1;letter-spacing:-.02em;color:#2b3038}"
       + ".big small{font-size:12px;color:#8d8477;font-weight:400;margin-left:2px}"
       + ".lv{padding:3px 11px;border-radius:5px;font-size:11.5px;font-weight:600;"
       +   "background:linear-gradient(180deg,#f9f0dd,#f1e2c4);color:#75501c;border:1px solid #d9c39b}"
       + ".lv.l1{background:linear-gradient(180deg,#faeae1,#f2d8c8);color:#7d321c;border-color:#dcb8a0}"
       + ".lv.l2{background:linear-gradient(180deg,#eaf0e2,#d9e4cd);color:#3d4f35;border-color:#bccdab}"
       + ".lv.l3{background:linear-gradient(180deg,#f4f2ee,#e9e5dc);color:#5f574c;border-color:#d4cdbd}"
-      + ".mini{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:10.5px;color:#7d8492}"
+      + ".mini{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:10.5px;color:#6f6a60}"
       + ".mini span{display:inline-flex;align-items:center}"
       + ".mini i{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:5px;"
       +   "box-shadow:0 0 0 1px rgba(255,255,255,.85) inset}"
-      + ".radar{display:block;margin:4px auto 12px;max-width:100%}"
+      + ".radar{display:block;width:100%;max-width:200px;height:auto}"
       /* 总评 */
-      + ".overall{white-space:pre-wrap;font-size:12.5px;line-height:1.95;color:#4a515c}"
+      + ".overall{white-space:pre-wrap;font-size:12.5px;line-height:1.95;color:#454b55}"
       /* 四维卡片 */
       + ".dim{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:10px 12px;"
       +   "margin-bottom:8px;border-left:3px solid var(--c);box-shadow:0 1px 2px rgba(60,45,25,.04)}"
@@ -235,67 +257,92 @@
       + ".dh b{margin-left:auto;font-size:12px;font-weight:650;color:var(--c)}"
       + ".dh b em{font-style:normal;font-size:9.5px;color:#a89e8b;font-weight:400}"
       + ".dh .w{color:#8d8477;font-size:10px}"
-      + ".dim p{margin:0;font-size:11.5px;color:#6b7280;line-height:1.7}"
+      + ".dim p{margin:0;font-size:11.5px;color:#5d6470;line-height:1.7}"
       + ".dim .tagline{display:inline-block;margin-top:6px;font-size:9.5px;font-weight:600;"
       +   "color:var(--c);background:#fbf9f4;border:1px solid #dfd7c6;"
       +   "padding:2px 7px;border-radius:4px;letter-spacing:.03em}"
-      /* 小练笔 */
-      + ".drill{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:11px 13px;"
+      /* 小练笔（与界面 app.css 同一套配色：编号徽章 + 三色标签 + 素材块） */
+      + ".drill{background:#fff;border:1px solid #ebe5d8;border-radius:10px;padding:11px 12px;"
       +   "margin-bottom:9px;box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       + ".drill:last-child{margin-bottom:0}"
-      + ".drill h5{margin:0 0 6px;font-size:12px;color:#4c535e}"
-      + ".drill p{margin:0 0 4px;font-size:11.5px;color:#6b7280;line-height:1.75}"
+      + ".drill-head{display:flex;align-items:center;gap:7px;margin-bottom:7px}"
+      + ".drill-no{width:19px;height:19px;border-radius:5px;display:flex;align-items:center;"
+      +   "justify-content:center;flex:0 0 19px;font-size:10px;font-weight:600;color:#8a6c34;"
+      +   "background:linear-gradient(180deg,#fbf3e0,#f6e9ce);border:1px solid #ecdcbc}"
+      + ".drill-head h5{margin:0;font-size:11px;font-weight:650;color:#2e323a;flex:1;line-height:1.4}"
+      + ".drill-sec{margin-top:6px}"
+      + ".drill-lb{display:inline-block;font-size:10px;letter-spacing:.1em;font-weight:600;margin-bottom:2px}"
+      + ".drill-lb.s1{color:#b0552c}"
+      + ".drill-lb.s2{color:#3b6ea5}"
+      + ".drill-lb.s3{color:#2f7f6a}"
+      + ".drill-sec p{margin:0;font-size:10.4px;line-height:1.72;color:#5d6470}"
+      + ".drill-task{margin-top:7px;padding-top:6px;border-top:1px dashed #e6dfd0;"
+      +   "font-size:10.8px;color:#8a7a5c;display:flex;justify-content:space-between;gap:8px}"
+      + ".drill-task span:first-child{color:#b0a390}"
+      /* 通用段落（写作思路等仍用） */
+      + ".drill h5{margin:0 0 6px;font-size:12px;color:#2b3038}"
+      + ".drill p{margin:0 0 4px;font-size:11.5px;color:#5d6470;line-height:1.75}"
       + ".drill p:last-child{margin-bottom:0}"
-      + ".drill p b{color:#4c535e;font-weight:600}"
-      /* 参考写作思路：起承合三步纵向串联 */
-      + ".ol-step{display:flex;gap:10px;position:relative;padding-bottom:12px}"
-      + ".ol-step:last-child{padding-bottom:0}"
-      + ".ol-step:not(:last-child)::after{content:'';position:absolute;left:11px;top:24px;"
-      +   "bottom:0;width:1px;background:#e6dfd0}"
-      + ".ol-mark{flex:0 0 23px;height:23px;border-radius:50%;display:grid;place-items:center;"
-      +   "font-size:10px;font-weight:600;color:#8a6b3f;background:#f7efdf;"
-      +   "border:1px solid #e2d3b6;position:relative;z-index:1}"
-      + ".ol-body{flex:1;min-width:0;padding-top:1px}"
-      + ".ol-body h5{margin:0 0 3px;font-size:11.5px;font-weight:600;color:#4c535e;letter-spacing:.04em}"
-      + ".ol-body p{margin:0;font-size:11.5px;line-height:1.75;color:#6b7280}"
+      + ".drill p b{color:#3f3b35;font-weight:600}"
+      + ".drill ol{margin:0 0 4px;padding-left:18px}"
+      + ".drill ol li{font-size:11.5px;color:#5d6470;line-height:1.75;margin-bottom:2px}"
+      + ".drill ol li:last-child{margin-bottom:0}"
+      /* 写作思路：与界面同色系，标题/标签/正文分主次 */
+      + ".ol-note{font-size:10.5px;line-height:1.65;color:#9aa1ad;margin:-2px 0 10px;letter-spacing:.02em}"
+      + ".outline-flow{position:relative;padding-left:16px;border-left:1px solid #e3d9c4;margin-left:3px}"
+      + ".ol-step{position:relative;margin-bottom:13px}"
+      + ".ol-step:last-child{margin-bottom:0}"
+      + ".ol-step::before{content:'';position:absolute;left:-20px;top:5px;width:7px;height:7px;border-radius:50%;"
+      +   "background:#fff;border:1.5px solid #c8ae82}"
+      + ".ol-tag{font-size:11px;font-weight:650;letter-spacing:.1em;color:#9a7c46;margin-bottom:4px}"
+      + ".ol-step p{font-size:11.2px;color:#4c535e;line-height:1.78;margin:0}"
+      + ".ol-step p b{color:#2b3038;font-weight:600}"
+      + ".ol-list{margin:2px 0 0;padding:0;list-style:none;counter-reset:oli}"
+      + ".ol-list li{position:relative;padding-left:16px;font-size:11.2px;line-height:1.78;color:#4c535e;"
+      +   "margin-bottom:3px;counter-increment:oli}"
+      + ".ol-list li:last-child{margin-bottom:0}"
+      + ".ol-list li::before{content:counter(oli) '.';position:absolute;left:0;top:0;font-size:10.5px;"
+      +   "font-weight:600;color:#b89458}"
+      + ".ol-list li b{color:#2b3038;font-weight:600}"
       /* 具体问题与修改思路 */
-      + ".ib{background:#fdfbf6;border:1px solid #ece6d9;border-radius:9px;"
-      +   "padding:11px 13px;margin-bottom:9px}"
-      + ".ib:last-child{margin-bottom:0}"
-      + ".ib-head{display:flex;align-items:baseline;gap:7px;margin-bottom:7px}"
-      + ".ib-no{flex:0 0 auto;width:15px;height:15px;border-radius:4px;display:grid;place-items:center;"
-      +   "font-size:9px;font-weight:600;color:#a8562f;background:#fbeee6;"
-      +   "border:1px solid #eed6c6;transform:translateY(-1px)}"
-      + ".ib-head h5{margin:0;font-size:11.5px;font-weight:600;color:#4c535e;line-height:1.5}"
-      + ".ib-row{display:flex;gap:8px;font-size:11px;line-height:1.7;margin-bottom:4px}"
-      + ".ib-row:last-child{margin-bottom:0}"
-      + ".ib-k{flex:0 0 44px;font-size:9.5px;color:#a89e8b;letter-spacing:.02em;padding-top:1px}"
-      + ".ib-v{flex:1;min-width:0;color:#6b7280}"
-      + ".ib-row:last-child .ib-v{color:#5c6b4f}"
-      /* 写作小技巧 */
-      + ".card.tip ol{margin:0;padding-left:18px}"
-      + ".card.tip li{font-size:11.5px;line-height:1.85;color:#6b7280}"
-      /* 润色手法 */
-      + ".tech{background:#fdfbf6;border:1px solid #ece6d9;border-radius:9px;"
-      +   "padding:11px 13px;margin-bottom:9px}"
-      + ".tech:last-child{margin-bottom:0}"
-      + ".tech h5{margin:0 0 7px;font-size:11.5px;font-weight:600;color:#7a5f38;"
-      +   "display:flex;align-items:center;gap:6px}"
-      + ".tech h5::before{content:'';width:3px;height:11px;border-radius:2px;background:#c8a86e}"
-      + ".tech .pair{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:6px}"
-      + ".tech .pbox{border-radius:6px;padding:7px 9px;font-size:10.5px;line-height:1.65}"
-      + ".tech .pbox.before{background:#f4f2ec;color:#8a8f98}"
-      + ".tech .pbox.before em{font-style:normal;color:#a39a8a}"
-      + ".tech .pbox.after{background:#f3f6f0;color:#55614b}"
-      + ".tech .pbox b{display:block;font-size:9px;font-weight:600;letter-spacing:.06em;"
-      +   "margin-bottom:3px;opacity:.75}"
-      + ".tech .eff{font-size:10.5px;line-height:1.7;color:#7d8492;margin:0;"
-      +   "padding-left:9px;border-left:2px solid #e2d3b6}"
-      + ".drill .mat{background:#faf7ef;border-left:2px solid #d9c39b;padding:6px 9px;"
-      +   "border-radius:0 4px 4px 0;color:#6b6047}"
+      + ".issue{background:#fff;border:1px solid #ebe5d8;border-radius:10px;padding:11px 12px;margin-bottom:9px;"
+      +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
+      + ".issue:last-child{margin-bottom:0}"
+      + ".issue-top{display:flex;gap:8px;align-items:flex-start;margin-bottom:7px}"
+      + ".issue-no{width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;"
+      +   "flex:0 0 18px;margin-top:1px;font-size:10px;font-weight:600;color:#a8523a;"
+      +   "background:linear-gradient(180deg,#fdf0ec,#f9e4dd);border:1px solid #f0d3c9}"
+      + ".issue-problem{margin:0;font-size:11.2px;line-height:1.72;color:#2b3038;font-weight:600}"
+      + ".ia-lb{display:inline-block;font-size:10px;letter-spacing:.1em;font-weight:600;color:#9a7c46;"
+      +   "background:#fbf7ec;border:1px solid #ece1c9;border-radius:4px;padding:1px 5px;margin-bottom:4px}"
+      + ".issue-advice{margin-top:6px}"
+      + ".issue-advice p{margin:0;font-size:11px;line-height:1.75;color:#4c535e}"
+      + ".issue-steps{margin-top:7px;padding-top:7px;border-top:1px dashed #e6dfd0}"
+      + ".fix-steps{margin:0;padding:0;list-style:none;counter-reset:fst}"
+      + ".fix-steps li{position:relative;padding-left:17px;font-size:11px;line-height:1.75;color:#6d6455;"
+      +   "margin-bottom:3px;counter-increment:fst}"
+      + ".fix-steps li:last-child{margin-bottom:0}"
+      + ".fix-steps li::before{content:counter(fst);position:absolute;left:0;top:2px;width:12px;height:12px;"
+      +   "border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8.5px;"
+      +   "font-weight:600;color:#a08a63;background:#f7f2e6;border:1px solid #e9dfc9}"
+      + ".tech ul{margin:0;padding-left:16px}"
+      + ".tech li{font-size:11.5px;color:#5d6470;line-height:1.8;margin-bottom:4px}"
+      + ".tech li::marker{color:#c9a05c}"
+      + ".tech li:last-child{margin-bottom:0}"
+      + ".tech li b{display:inline-block;font-size:10px;font-weight:600;border:1px solid currentColor;"
+      +   "border-radius:4px;padding:0 4px;margin-right:5px;vertical-align:1px;opacity:.9}"
+      /* 润色稿重点描写方法：与界面同一套色 */
+      + ".pol .tk{border-radius:2px;padding:0 1px;font-weight:600}"
+      + ".tk-legend{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 9px;padding:7px 10px;"
+      +   "background:#faf8f2;border:1px dashed #e6ddc9;border-radius:7px}"
+      + ".tk-legend span{display:inline-flex;align-items:center;gap:5px;font-size:10.2px;color:#9aa1ad}"
+      + ".tk-legend i{width:5px;height:5px;border-radius:50%}"
+      + ".drill .mat{background:#f8f6ef;border-left:2px solid #d9c9a6;padding:6px 8px;"
+      +   "border-radius:0 5px 5px 0;color:#6d6455}"
+      + ".drill .mat b{color:#4d4636;font-weight:600}"
       /* 润色稿 */
       + ".pol{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:18px 22px;"
-      +   "font-family:'Songti SC',SimSun,serif;font-size:13.5px;line-height:2.05;color:#3f3b35;"
+      +   "font-family:'Songti SC',SimSun,serif;font-size:13.5px;line-height:2.05;color:#2b3038;"
       +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       + ".pol h6{text-align:center;font-size:15px;margin:0 0 12px;font-weight:700;letter-spacing:.04em}"
       + ".pol p{margin:0 0 7px;text-indent:2em}"
@@ -340,16 +387,25 @@
         "全文 " + (res.wordCount || 0) + " 字"
       ].filter(Boolean).join("　")) +
       '<style>' + tabCss() + "</style>" +
-      '<div class="score-row">' +
-        '<div class="big">' + (res.score || 0) + "<small>/100</small></div>" +
-        '<div class="' + lvCls + '">' + esc(lvText) + "</div>" +
-        '<div class="mini">' + ZP.DIMS.map(function (d) {
-          var hit = (res.dims || []).filter(function (x) { return x.key === d.key; })[0] || { score: 0 };
-          var c = DIM_COLORS[d.key] || d.color;
-          return '<span><i style="background:' + c + '"></i>' + esc(d.name) + " " + hit.score + "</span>";
-        }).join("") + "</div>" +
+      /* 分数卡：左侧信息栏（姓名 / 年级 / 总分 / 等级），右侧雷达图
+         与软件内报告头一致，雷达图不再独占一行通栏 */
+      '<div class="hero">' +
+        '<div class="hero-l">' +
+          '<div class="stu">' + esc(res.student || "未署名") +
+            '<em>' + esc(res.meta || "") + "</em></div>" +
+          '<div class="big">' + (res.score || 0) + "<small>/100</small></div>" +
+          '<div class="' + lvCls + '">' + esc(lvText) + "</div>" +
+          '<div class="cap">加权总分</div>' +
+        "</div>" +
+        (opt.radar
+          ? '<div class="hero-r"><img class="radar" src="' + opt.radar + '" alt="四维雷达图"></div>'
+          : '<div class="hero-r">' + ZP.DIMS.map(function (d) {
+              var hit = (res.dims || []).filter(function (x) { return x.key === d.key; })[0] || { score: 0 };
+              var c = DIM_COLORS[d.key] || d.color;
+              return '<span class="hd"><i style="background:' + c + '"></i>' + esc(d.name) +
+                "<b>" + hit.score + "</b></span>";
+            }).join("") + "</div>") +
       "</div>" +
-      (opt.radar ? '<img class="radar" src="' + opt.radar + '" alt="四维雷达图" style="width:340px">' : "") +
       '<div class="blk"><div class="blk-head"><h4>整篇研判</h4><i></i>' +
         '<span class="meta">用字 ' + (m.words || 0) + " · 段落 " + (m.paras || 0) + "</span></div>" +
         '<div class="card overall">' + esc(res.overall || "") + "</div></div>" +
@@ -358,49 +414,83 @@
     "</section>";
   }
 
-  /* 写作思路页 */
+  /* 写作思路页：与界面 renderOutline 同结构、同配色
+     —— 金色年级标签 + 灰色说明行 + 有序列表 + 编号问题卡 + 三色小标签 */
   function outlinePage(res) {
     var ol = res.outline || {};
+    var NL = String.fromCharCode(10);
+    /* 只放行 <b>/<del>/<ins>，其余一律转义：与界面 rich() 行为一致 */
+    function richText(s) {
+      return esc(s).replace(/&lt;(\/?)(del|ins|b)&gt;/g, "<$1$2>");
+    }
+    /* 只保留真正有文字的步骤：模型偶尔把 text 回成空串，
+       或历史记录是旧格式缺字段，这里必须过滤掉，否则会渲染出空的提纲块。 */
+    var steps = [ol.begin, ol.middle, ol.end].filter(function (o) {
+      return o && String(o.text || "").trim();
+    });
 
-    /* 参考思路：把开头 / 中间 / 结尾串成一条可照着写下来的路径 */
-    var step = function (o, fallback, mark) {
-      if (!o || !(o.text || o.title)) return "";
-      return '<div class="ol-step">' +
-        '<span class="ol-mark">' + mark + "</span>" +
-        '<div class="ol-body">' +
-          "<h5>" + esc(o.title || fallback) + "</h5>" +
-          "<p>" + esc(o.text || "") + "</p>" +
-        "</div></div>";
-    };
-    var flow = step(ol.begin, "开头", "起") + step(ol.middle, "中间", "承") + step(ol.end, "结尾", "合");
-
-    /* 具体问题与修改思路：每条给「现状 → 怎么改 → 示例」 */
-    var issues = (Array.isArray(ol.issues) ? ol.issues : []).map(function (it, i) {
-      if (!it || typeof it !== "object") return "";
-      var name = String(it.title || it.problem || "").trim();
-      if (!name) return "";
-      var row = function (label, val) {
-        val = String(val || "").trim();
-        if (!val) return "";
-        return '<div class="ib-row"><span class="ib-k">' + label + "</span>" +
-          '<span class="ib-v">' + esc(val) + "</span></div>";
-      };
-      return '<div class="ib">' +
-        '<div class="ib-head"><span class="ib-no">' + (i + 1) + "</span>" +
-          "<h5>" + esc(name) + "</h5></div>" +
-        row("现状", it.now || it.problem) +
-        row("怎么改", it.how) +
-        row("示例", it.sample) +
-        "</div>";
-    }).join("");
-
-    /* 兼容旧数据：只有 keys 时仍作为写作小技巧展示 */
-    var keys = (ol.keys || []).length
-      ? '<div class="blk"><div class="blk-head"><h4>写作小技巧</h4><i></i></div>' +
-        '<div class="card tip"><ol>' +
-        (ol.keys || []).map(function (k) { return "<li>" + esc(k) + "</li>"; }).join("") +
-        "</ol></div></div>"
+    var olHtml = steps.length
+      ? '<div class="blk"><div class="blk-head"><h4>参考写作思路</h4><i></i>' +
+        '<span class="meta">' + esc((res.meta || "").split(" · ")[0] || "") + " 重写提纲</span></div>" +
+        '<div class="ol-note">按本文题目与内容生成，可作为重新构思一篇作文时的客观提纲。</div>' +
+        '<div class="outline-flow">' +
+        steps.map(function (o) {
+          var text = String(o.text || "");
+          var parts = text.split(new RegExp(NL + "|(?=[0-9]{1,2}[.、])"))
+            .map(function (x) { return x.trim(); }).filter(Boolean);
+          var numRe = /^[0-9]{1,2}[.、]\s*/;
+          var body;
+          if (parts.some(function (x) { return numRe.test(x); })) {
+            var lead = [], items = [], started = false;
+            parts.forEach(function (ln) {
+              if (numRe.test(ln)) { started = true; items.push(ln.replace(numRe, "")); }
+              else if (!started) lead.push(ln);
+              else if (items.length) items[items.length - 1] += ln;
+            });
+            body = (lead.length ? "<p>" + richText(lead.join("")) + "</p>" : "") +
+              (items.length
+                ? '<ol class="ol-list">' + items.map(function (ln) { return "<li>" + richText(ln) + "</li>"; }).join("") + "</ol>"
+                : "");
+          } else {
+            body = "<p>" + richText(text) + "</p>";
+          }
+          return '<div class="ol-step"><div class="ol-tag">' + esc(o.title || "") + "</div>" + body + "</div>";
+        }).join("") +
+        "</div></div>"
       : "";
+
+    var issues = res.issues || [];
+    var issueHtml = issues.length
+      ? '<div class="blk"><div class="blk-head"><h4>具体问题与修改思路</h4><i></i>' +
+        '<span class="meta">' + issues.length + " 项 · 按优先级排列</span></div>" +
+        issues.map(function (it, i) {
+          var stepsHtml = (it.steps || []).length
+            ? '<div class="issue-steps"><span class="ia-lb">怎么做</span><ol class="fix-steps">' +
+              it.steps.map(function (t) { return "<li>" + richText(t) + "</li>"; }).join("") + "</ol></div>"
+            : "";
+          return '<div class="issue">' +
+            '<div class="issue-top"><span class="issue-no">' + (it.no || i + 1) + "</span>" +
+              '<p class="issue-problem">' + richText(it.problem || "") + "</p></div>" +
+            (it.advice
+              ? '<div class="issue-advice"><span class="ia-lb">修改思路</span><p>' + richText(it.advice) + "</p></div>"
+              : "") +
+            stepsHtml +
+          "</div>";
+        }).join("") + "</div>"
+      : "";
+
+    /* 提纲整块缺失时必须显式说明：
+       只提示「本次未生成」会让这一页看着像内容丢了，
+       尤其是下面还有「具体问题与修改思路」时更易误判。 */
+    if (!olHtml) {
+      olHtml = '<div class="blk"><div class="blk-head"><h4>参考写作思路</h4><i></i></div>' +
+        '<div class="card" style="color:#8a7a5c;line-height:1.9;padding:14px 16px;' +
+        'background:#fbf7ec;border:1px dashed #e5dcc6;border-radius:8px;">' +
+        (issueHtml
+          ? "本次批改未返回「开头／中间／结尾」提纲，下面列出的是本篇的具体问题与修改思路。"
+          : "本次未生成写作思路，可重新批改后再导出。") +
+        "</div></div>";
+    }
 
     return '<section class="sheet">' +
       head("写作思路", [
@@ -408,27 +498,25 @@
         (res.student && res.student !== "未署名") ? esc(res.student) : ""
       ].filter(Boolean).join("　")) +
       '<style>' + tabCss() + "</style>" +
-      (flow
-        ? '<div class="blk"><div class="blk-head"><h4>参考写作思路</h4><i></i>' +
-          '<span class="meta">按段落功能串联</span></div>' + flow + "</div>"
-        : "") +
-      (issues
-        ? '<div class="blk"><div class="blk-head"><h4>具体问题与修改思路</h4><i></i></div>' +
-          issues + "</div>"
-        : "") +
-      keys +
+      olHtml + issueHtml +
     "</section>";
   }
 
+  /* 小练笔页 */
   function drillPage(res) {
     var list = res.drills || [];
     var html = list.length
       ? list.map(function (d, i) {
-        return '<div class="drill"><h5>练习 ' + (i + 1) + "　" + esc(d.title || "") + "</h5>" +
-          (d.problem ? "<p><b>本文问题：</b>" + esc(d.problem) + "</p>" : "") +
-          (d.think ? "<p><b>写作思路：</b>" + esc(d.think) + "</p>" : "") +
-          (d.material ? '<p class="mat"><b>素材句式：</b>' + esc(d.material) + "</p>" : "") +
-          (d.task ? "<p><b>练习要求：</b>" + esc(d.task) + "</p>" : "") +
+        return '<div class="drill">' +
+          '<div class="drill-head"><span class="drill-no">' + (d.no || i + 1) + "</span>" +
+            "<h5>" + esc(d.title || "练习 " + (i + 1)) + "</h5></div>" +
+          (d.problem ? '<div class="drill-sec"><span class="drill-lb s1">本文问题</span>' +
+            "<p>" + esc(d.problem) + "</p></div>" : "") +
+          (d.think ? '<div class="drill-sec"><span class="drill-lb s2">写作思路</span>' +
+            "<p>" + esc(d.think) + "</p></div>" : "") +
+          (d.material ? '<div class="drill-sec"><span class="drill-lb s3">素材 / 句式</span>' +
+            '<div class="mat">' + d.material + "</div></div>" : "") +
+          (d.task ? '<div class="drill-task"><span>本次任务</span><span>' + esc(d.task) + "</span></div>" : "") +
         "</div>";
       }).join("")
       : '<div class="card">本次未生成小练笔。</div>';
@@ -441,45 +529,224 @@
   }
 
   /* 润色后文章页 */
+  /* 润色稿正文：与界面同一份 TECH_MARKS 定义，保证导出与屏幕颜色一致 */
+  function techBody(text) {
+    return ZP.paintTechMarks(text, esc, function (k, inner) {
+      var mk = ZP.techMarkOf(k);
+      if (!mk) return inner;
+      return '<span class="tk" style="color:' + mk.color + ';background:' + mk.bg + '">' + inner + "</span>";
+    });
+  }
+
+  /* 颜色图例：只列本篇实际出现的类别 */
+  function legendHtml(pol) {
+    var body = ((pol && pol.paras) || []).join("");
+    var used = (ZP.TECH_MARKS || []).filter(function (t) { return body.indexOf("<" + t.key + ">") >= 0; });
+    if (!used.length) return "";
+    return '<div class="tk-legend">' + used.map(function (t) {
+      return '<span><i style="background:' + t.color + '"></i>' + esc(t.name) + "</span>";
+    }).join("") + "</div>";
+  }
+
+  /* 本次使用的润色手法：旧报告无该字段时整块不输出 */
+  function techHtml(pol) {
+    var list = (pol && Array.isArray(pol.techniques) ? pol.techniques : []).filter(function (t) {
+      return t && (typeof t === "object" ? String(t.text || "").trim() : String(t).trim());
+    });
+    if (!list.length) return "";
+    return '<div class="blk tech"><div class="blk-head"><h4>本次使用的润色手法</h4><i></i>' +
+      '<span class="meta">' + list.length + " 条</span></div><ul>" +
+      list.map(function (t) {
+        var mk = ZP.techMarkOf(t && t.mark);
+        var label = mk ? '<b style="color:' + mk.color + '">' + esc(mk.name) + "</b>" : "";
+        return "<li>" + label + esc(String((t && t.text) || t || "")) + "</li>";
+      }).join("") + "</ul></div>";
+  }
+
   function polishedPage(res) {
     var pol = res.polished || { paras: [] };
     var paras = pol.paras || [];
-    var words = ZP.countChars(paras.join(""));
-
-    /* 本次改写用到的润色手法：原句 → 润色句对照 */
-    var techs = (Array.isArray(pol.techniques) ? pol.techniques : []).map(function (t) {
-      if (!t || !t.name) return "";
-      var pair = (t.before || t.after)
-        ? '<div class="pair">' +
-            '<div class="pbox before"><b>原文</b>' + esc(t.before || "—") + "</div>" +
-            '<div class="pbox after"><b>润色后</b>' + esc(t.after || "—") + "</div>" +
-          "</div>"
-        : "";
-      return '<div class="tech">' +
-        "<h5>" + esc(t.name) + "</h5>" + pair +
-        (t.effect ? '<p class="eff">' + esc(t.effect) + "</p>" : "") +
-        "</div>";
-    }).join("");
-
+    var words = ZP.countChars(ZP.stripTechMarks(paras.join("")));
     return '<section class="sheet">' +
       head("润色后文章", esc(res.title || "") + "　" + words + " 字") +
       '<style>' + tabCss() + "</style>" +
       '<div class="blk"><div class="blk-head"><h4>升格范文</h4><i></i></div>' +
+        legendHtml(pol) +
         '<div class="pol"><h6>' + esc(pol.title || res.title || "") + "</h6>" +
-          (paras.length ? paras.map(function (t) { return "<p>" + esc(t) + "</p>"; }).join("")
-                        : '<p style="text-align:center;color:#a9a293">本次未生成升格范文。</p>') +
+          (paras.length ? paras.map(function (t) { return "<p>" + techBody(t) + "</p>"; }).join("")
+                        : '<p style="text-align:center;color:#a9a293">' +
+                          (res.polishFailed === "no_source"
+                            ? "本次未生成升格范文：批改未取到原文句子，缺少改写依据。可在稿源文本中粘贴正文后重新批改。"
+                            : "本次未生成升格范文。") + "</p>") +
         "</div></div>" +
-      (techs
-        ? '<div class="blk"><div class="blk-head"><h4>本文用到的润色手法</h4><i></i>' +
-          '<span class="meta">' + (pol.techniques || []).length + " 处</span></div>" +
-          techs + "</div>"
-        : "") +
+      techHtml(pol) +
     "</section>";
   }
 
   /* ============================================================
      三、组装完整文档
      ============================================================ */
+  /* 导出文档里引用的排版脚本地址。
+   * blob iframe 的 location 是 blob:，不能直接拼接相对路径，
+   * 这里按主页面的地址解析成绝对 URL（同源，满足 script-src 'self'）。 */
+  function fixScriptUrl() {
+    try {
+      var base = (typeof document !== "undefined" && document.baseURI) ? document.baseURI : location.href;
+      return new URL("assets/js/report-fix.js", base).href;
+    } catch (e) {
+      return "assets/js/report-fix.js";
+    }
+  }
+  var FIX_SCRIPT_URL = fixScriptUrl();
+
+  /* 排版修正脚本的源码：优先内联进导出的 HTML，让文件完全自包含。
+   * 之前只写外链，导出文件会把主程序所在目录（开发时是
+   * http://127.0.0.1:PORT/，安装后是 file:///...\resources\app.asar\app/）
+   * 固化成绝对地址：把报告发给别人、或换台机器打开，脚本就 404，
+   * 卡片重叠、页高不贴合。内联后离线双击也能正常排版。 */
+  var FIX_SCRIPT_SRC = "";
+  function fixScriptSource() {
+    if (FIX_SCRIPT_SRC !== null && FIX_SCRIPT_SRC !== "") return FIX_SCRIPT_SRC;
+
+    /* file:// 下同步 XHR 会被 CORS 拦（origin 为 null），
+       因此先试 <script> 标签加载，再退回同步 XHR。
+       标签加载不走 CORS，file:// 与 http:// 都可用。 */
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "assets/js/report-fix.js", false);   /* 同步：build 是同步接口 */
+      xhr.send(null);
+      if (xhr.status === 200 || (xhr.status === 0 && xhr.responseText)) {
+        FIX_SCRIPT_SRC = xhr.responseText;
+        return FIX_SCRIPT_SRC;
+      }
+    } catch (e) {
+      /* file:// 常见：忽略并尝试标签法 */
+    }
+
+    FIX_SCRIPT_SRC = "";
+    return FIX_SCRIPT_SRC;
+  }
+
+  /* file:// 场景：用 <script> 标签注入取得源码不可行（跨源读取被限制），
+     因此改为「直接外链到 iframe」，并在 CSP 里放行该具体地址。
+     这样 fix() 能执行，不依赖内联。 */
+  function fixScriptExternTag() {
+    return '<script src="' + FIX_SCRIPT_URL + '"><\/script>';
+  }
+
+  /* ---- 内联脚本的 CSP 哈希 ----
+   * 主页面 script-src 'self' 会约束 iframe 里的文档：报告自带
+   * 'unsafe-inline' 也不够（实测被父级策略压过），内联脚本必须带
+   * nonce 或 sha256 白名单。静态页面没有 nonce，因此用 sha256。
+   * crypto.subtle.digest 是异步接口，而 build() 是同步的，
+   * 所以这里内置一个最小的 SHA-256 实现。 */
+  var SHA_K = [], SHA_H0 = [];
+  (function () {
+    var n = 2, c = 0;
+    while (c < 64) {
+      var isPrime = true;
+      for (var d = 2; d * d <= n; d++) { if (n % d === 0) { isPrime = false; break; } }
+      if (isPrime) {
+        SHA_K[c] = (Math.pow(n, 1 / 3) % 1 * 4294967296) | 0;
+        SHA_H0[c] = (Math.pow(n, 1 / 2) % 1 * 4294967296) | 0;
+        c++;
+      }
+      n++;
+    }
+    SHA_H0.length = 8;
+  })();
+
+  function ror(x, n) { return (x >>> n) | (x << (32 - n)); }
+
+  function sha256Hex(bytes) {
+    if (!bytes) return "";
+    if (!bytes.length) return "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    var H = SHA_H0.slice(0), K = SHA_K;
+    var len = bytes.length, bitLen = len * 8;
+    /* 填充后需容纳 1 字节 0x80 + 8 字节长度；len%64==55 时正好跨块，
+       用 ((len+9)>>6)+1 会少算一块，必须改用向上取整。 */
+    var total = Math.ceil((len + 9) / 64) * 64;
+    var buf = new Uint8Array(total);
+    buf.set(bytes);
+    buf[len] = 0x80;
+    var dv = new DataView(buf.buffer);
+    dv.setUint32(total - 4, bitLen >>> 0, false);
+    dv.setUint32(total - 8, Math.floor(bitLen / 4294967296), false);
+    var w = new Array(64);
+    for (var off = 0; off < total; off += 64) {
+      for (var i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4, false);
+      for (var j = 16; j < 64; j++) {
+        var s0 = ror(w[j - 15], 7) ^ ror(w[j - 15], 18) ^ (w[j - 15] >>> 3);
+        var s1 = ror(w[j - 2], 17) ^ ror(w[j - 2], 19) ^ (w[j - 2] >>> 10);
+        w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
+      }
+      var a = H[0], b = H[1], c2 = H[2], d2 = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for (var k = 0; k < 64; k++) {
+        var S1 = ror(e, 6) ^ ror(e, 11) ^ ror(e, 25);
+        var ch = (e & f) ^ (~e & g);
+        var t1 = (h + S1 + ch + K[k] + w[k]) | 0;
+        var S0 = ror(a, 2) ^ ror(a, 13) ^ ror(a, 22);
+        var maj = (a & b) ^ (a & c2) ^ (b & c2);
+        var t2 = (S0 + maj) | 0;
+        h = g; g = f; f = e; e = (d2 + t1) | 0;
+        d2 = c2; c2 = b; b = a; a = (t1 + t2) | 0;
+      }
+      H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0;
+      H[2] = (H[2] + c2) | 0; H[3] = (H[3] + d2) | 0;
+      H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0;
+      H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+    }
+    var out = "";
+    for (var m = 0; m < 8; m++) out += ("00000000" + (H[m] >>> 0).toString(16)).slice(-8);
+    return out;
+  }
+
+  /* 返回 "sha256-xxx"，算不出来时返回空串（此时退回外链方案） */
+  function scriptHash(src) {
+    try {
+      if (!window.TextEncoder) return "";
+      var hex = sha256Hex(new TextEncoder().encode(src));
+      if (!hex) return "";
+      var bin = "";
+      for (var i = 0; i < hex.length; i += 2) bin += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      return "sha256-" + btoa(bin);
+    } catch (e) { return ""; }
+  }
+
+  /* 内联脚本的「内容 + 哈希」必须成套使用，因此只读一次、结果缓存：
+     先前 CSP 与 <script> 各调用一次 fixScriptSource()，一旦读到的字节
+     有差异（BOM、换行、asar 打包注入），CSP 哈希就和实际内容对不上，
+     整段脚本被拦，排版修正不生效 —— 这正是「写作思路整页空白」的成因。 */
+  var FIX_BUNDLE = null;
+  function fixBundle() {
+    if (FIX_BUNDLE) return FIX_BUNDLE;
+    var src = fixScriptSource();
+    var hash = src ? scriptHash(src) : "";
+    FIX_BUNDLE = { src: src, hash: hash };
+    return FIX_BUNDLE;
+  }
+
+  /* CSP 的 script-src 部分。
+     内联可用时用 sha256 白名单放行；
+     读不到源码时走外链，此时必须额外放行该地址——
+     file:// 打开时 origin 为 null，'self' 匹配不到任何源，
+     脚本会被拦、fix() 不执行、卡片叠在一起。 */
+  function scriptCspTokens() {
+    var b = fixBundle();
+    if (b.hash) return "'self' '" + b.hash + "'";
+    /* 外链兜底：只能用源表达式（'self' / file: / http:），
+       不能写完整文件路径，否则 CSP 判定为非法源并整条忽略。 */
+    return "'self' file: blob:";
+  }
+
+  function fixScriptTag() {
+    var b = fixBundle();
+    if (b.src && b.hash) return "<script>" + b.src + "<\/script>";
+    /* 拿不到内容或算不出哈希：退回外链（同源，满足 'self'），
+       否则脚本被 CSP 拦掉，报告卡片会叠在一起。 */
+    return '<script src="' + FIX_SCRIPT_URL + '"><\/script>';
+  }
+
   function build(res, opt) {
     opt = opt || {};
     var images = opt.images || [];
@@ -501,11 +768,17 @@
     parts.push(polishedPage(res));
 
     return "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">" +
-      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">" +
+      /* 导出文档自带 CSP：父页面的 script-src 'self' 会继承到 blob 文档，
+         导致排版修正脚本被拦截、卡片位置错乱、截图失败。
+         script-src 放开 'unsafe-inline'，是为了让修正脚本以源码内联进报告；
+         其余仍按最严格处理（不加载任何外部脚本、样式与字体）。 */
+      "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; " +
+        "img-src 'self' data: blob:; style-src 'unsafe-inline'; " +
+        "script-src " + scriptCspTokens() + "; font-src data:\">" +
       "<title>" + esc(res.title || "作文") + " · 智批作文报告</title>" +
       "<style>" + baseCss() + "</style></head><body>" +
       /* 全部内容放进一个 .doc 容器，连续展示，不分页 */
-      '<div id="docWrap"><div class="doc">' +
+      '<div class="doc">' +
         '<header class="doc-head">' +
           '<h1>作文批改报告</h1>' +
           '<div class="doc-meta">' + [
@@ -515,73 +788,11 @@
           ].filter(Boolean).join("　") + "</div>" +
         "</header>" +
         parts.join(NL) +
-      "</div></div>" +
-      /* 打开后自动排一次版：卡片防重叠 + 页面高度贴合内容 */
-      "<scr" + "ipt>(function(){function fix(){" +
-      "document.querySelectorAll('.eboard').forEach(function(bd){" +
-        "var sheet=bd.querySelector('.esheet');var H=sheet?sheet.offsetHeight:0;if(!H)return;" +
-        "var maxCol=H,GAPMIN=10,GAPMAX=14;" +
-        "bd.querySelectorAll('.ecol').forEach(function(col){" +
-          "var cs=[].slice.call(col.querySelectorAll('.ecard'));if(!cs.length)return;" +
-          /* 量真实高度：先清 transform */
-          "cs.forEach(function(c){c.style.transform='none';c.style.top='0px';});" +
-          "var hs=cs.map(function(c){return c.offsetHeight;});" +
-          "var total=hs.reduce(function(a,b){return a+b;},0);" +
-          /* 理想位置：中心对齐划线 */
-          "var want=cs.map(function(c,i){var p=parseFloat(c.getAttribute('data-top'))||0;" +
-            "return p/100*H-hs[i]/2;});" +
-          /* 排布策略：放得下就对齐划线；放不下就顺序下排（允许越过下沿，绝不重叠） */
-          "var needMin=total+GAPMIN*(cs.length-1);" +
-          "var fits=needMin<=H;" +
-          "var tops=want.slice();var prev=-1e9;" +
-          "if(fits){" +
-            "for(var i=0;i<tops.length;i++){if(tops[i]<prev+GAPMAX)tops[i]=prev+GAPMAX;" +
-              "if(tops[i]<0)tops[i]=0;prev=tops[i]+hs[i];}" +
-            "var o0=prev-H;" +
-            "if(o0>0.5){var s0=Math.min(o0,tops[0]);if(s0>0)tops=tops.map(function(t){return t-s0;});}" +
-          "}else{" +
-            "var acc=0;" +
-            "for(var j=0;j<tops.length;j++){tops[j]=acc;acc=acc+hs[j]+GAPMIN;}" +
-          "}" +
-          "cs.forEach(function(c,i){c.style.transform='none';c.style.top=Math.round(tops[i])+'px';});" +
-          /* 侧栏：至少与纸面同高；放不下时允许向下延伸，但不撑高纸面 */
-          "var need=Math.ceil(tops[tops.length-1]+hs[hs.length-1]+8);" +
-          "var ch=Math.max(H,need);" +
-          "col.style.height=ch+'px';col.style.minHeight=ch+'px';" +
-          "if(ch>maxCol)maxCol=ch;" +
-        "});" +
-        /* 纸面高度锁死：图片比例不变 */
-        "if(sheet){sheet.style.minHeight='';sheet.style.height=H+'px';}" +
-        "bd.style.minHeight=Math.max(H,maxCol)+'px';" +
-      "});" +
-    "}" +
-    /* 窄屏等比缩放：按视口宽算比例，缩放在 .doc 上，外层占位避免底部留白过大 */
-    "function fitMobile(){" +
-      "var doc=document.querySelector('.doc');if(!doc)return;" +
-      "var vw=document.documentElement.clientWidth||window.innerWidth;" +
-      /* 先复位再量，避免重复调用时读到缩放后的尺寸 */
-      "doc.style.transform='none';" +
-      "var wrap0=document.getElementById('docWrap');" +
-      "if(wrap0){wrap0.style.height='auto';}" +
-      "var W=doc.offsetWidth;" +
-      "var rawH=doc.scrollHeight;" +
-      "var wrap=document.getElementById('docWrap');" +
-    "if(vw>0&&W>vw){" +
-        "var k=vw/(W+2);" +
-        "doc.style.transformOrigin='top left';" +
-        "doc.style.transform='scale('+k+')';" +
-        "if(wrap){" +
-          "wrap.style.height=(rawH*k)+'px';" +
-          "wrap.style.overflow='visible';" +
-        "}" +
-      "}else{" +
-        "doc.style.transform='none';" +
-        "if(wrap){wrap.style.height='auto';wrap.style.overflow='visible';}" +
-      "}" +
-    "}" +
-    "if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){fix();fitMobile();});}else{fix();fitMobile();}" +
-    "window.addEventListener('load',function(){fix();fitMobile();});" +
-    "window.addEventListener('resize',fitMobile);})();</scr" + "ipt>" +
+      "</div>" +
+      /* 打开后自动排一次版：卡片防重叠 + 页面高度贴合内容。
+       * 优先内联源码，保证导出文件自包含、换机/离线可用；
+       * 读不到源码时退回外链（同源绝对地址，安装包内同样满足 'self'）。 */
+      fixScriptTag() +
     "</body></html>";
   }
 

@@ -130,7 +130,93 @@ window.ZP = window.ZP || {};
     }
   ];
 
-  ZP.GENRES = ["记叙文", "写人", "写景", "状物", "想象作文", "读后感", "议论文"];
+  /* ============================================================
+     作文体裁（统一四字，扁平排列）
+     ------------------------------------------------------------
+     体裁之间不再分组，界面直接两列平铺；每个四字名括号里是
+     对应的作文题型，供提示词与旧记录映射使用（见 GENRE_ALIAS）。
+     「表扬书信」已并入「书信写作」——两者都是书信格式，
+     区别只在内容侧重点，评改时合并处理即可。
+     ============================================================ */
+  ZP.GENRE_GROUPS = [
+    {
+      name: "体裁",
+      items: [
+        { id: "记叙作文", emoji: "📖", hint: "写事、写人、写活动",
+          topics: ["记叙文", "写人"] },
+        { id: "写景游记", emoji: "🌿", hint: "写景、游记、校园或家乡风景",
+          topics: ["写景", "游记"] },
+        { id: "状物描写", emoji: "🪶", hint: "写一种动物、植物或物品",
+          topics: ["状物"] },
+        { id: "想象作文", emoji: "✨", hint: "童话、科幻、假如……",
+          topics: ["想象作文", "童话"] },
+        { id: "书信写作", emoji: "✉️", hint: "给××的一封信、表扬信、感谢信",
+          topics: ["书信", "表扬信", "感谢信"] },
+        { id: "演讲发言", emoji: "🎤", hint: "演讲稿、国旗下讲话、发言稿",
+          topics: ["演讲稿", "发言稿"] },
+        { id: "读后有感", emoji: "💭", hint: "读后感、观后感",
+          topics: ["读后感", "观后感"] },
+        { id: "议论说理", emoji: "⚖️", hint: "议论、说理、观点表达",
+          topics: ["议论文"] }
+      ]
+    }
+  ];
+
+  /* 旧名称 → 四字名（历史记录、已存报告仍按旧串匹配） */
+  ZP.GENRE_ALIAS = {
+    "记叙文": "记叙作文",
+    "写人": "记叙作文",
+    "写景": "写景游记",
+    "游记": "写景游记",
+    "状物": "状物描写",
+    "想象作文": "想象作文",
+    "童话": "想象作文",
+    "书信": "书信写作",
+    "书信写作": "书信写作",
+    "表扬信": "书信写作",
+    "表扬书信": "书信写作",
+    "感谢信": "书信写作",
+    "演讲稿": "演讲发言",
+    "发言稿": "演讲发言",
+    "读后感": "读后有感",
+    "观后感": "读后有感",
+    "议论文": "议论说理"
+  };
+
+  /* 兼容旧接口：扁平列表 */
+  ZP.GENRES = (function () {
+    var out = [];
+    ZP.GENRE_GROUPS.forEach(function (g) {
+      g.items.forEach(function (it) { out.push(it.id); });
+    });
+    return out;
+  })();
+
+  /* 把任意旧/新体裁名归一到当前的四字名 */
+  ZP.normGenre = function (id) {
+    var k = String(id || "").trim();
+    if (!k) return ZP.GENRES[0];
+    if (ZP.GENRES.indexOf(k) >= 0) return k;
+    return ZP.GENRE_ALIAS[k] || k;
+  };
+
+  /* 查体裁的图标与提示（支持旧名） */
+  ZP.genreMeta = function (id) {
+    var want = ZP.normGenre(id);
+    for (var i = 0; i < ZP.GENRE_GROUPS.length; i++) {
+      var items = ZP.GENRE_GROUPS[i].items;
+      for (var j = 0; j < items.length; j++) {
+        if (items[j].id === want) return items[j];
+      }
+    }
+    return { id: want, emoji: "✍️", hint: "", topics: [] };
+  };
+
+  /* 该体裁对应的具体题型（用于提示词补充说明） */
+  ZP.genreTopic = function (id) {
+    var m = ZP.genreMeta(id);
+    return m && m.topics ? m.topics[0] : ZP.normGenre(id);
+  };
 
   ZP.DEFAULT_WEIGHTS = { content: 30, structure: 25, language: 25, norm: 20 };
 
@@ -176,5 +262,43 @@ window.ZP = window.ZP || {};
   ZP.gradeWordLabel = function (id) {
     var g = ZP.getGrade(id);
     return g.words[0] + "–" + g.words[1] + " 字";
+  };
+
+  /* ============================================================
+     润色稿「重点描写方法」配色
+     ------------------------------------------------------------
+     教学上只区分四类改写手法，颜色固定，界面与导出共用同一份定义，
+     保证「屏幕上看到的颜色」与「导出文件里的颜色」完全一致。
+     模型在润色稿里用 <m1>…</m1> <m2>…</m2> … 标注对应片段。
+     ============================================================ */
+  ZP.TECH_MARKS = [
+    { key: "m1", name: "动作 / 细节描写", color: "#b3541e", bg: "rgba(214,138,74,.18)" },
+    { key: "m2", name: "感官描写",       color: "#1f6f8b", bg: "rgba(76,158,182,.16)" },
+    { key: "m3", name: "修辞手法",       color: "#7a4fa8", bg: "rgba(139,110,192,.16)" },
+    { key: "m4", name: "议论改叙述 / 点题", color: "#2f7d5c", bg: "rgba(72,150,116,.16)" }
+  ];
+
+  ZP.techMarkOf = function (key) {
+    for (var i = 0; i < ZP.TECH_MARKS.length; i++) {
+      if (ZP.TECH_MARKS[i].key === key) return ZP.TECH_MARKS[i];
+    }
+    return null;
+  };
+
+  /* 去掉 <m1>…</m4> 标记，只留文字：字数统计与导出必须用这个口径 */
+  ZP.stripTechMarks = function (text) {
+    return String(text == null ? "" : text).replace(/<\/?(?:m1|m2|m3|m4)>/g, "");
+  };
+
+  /* 把 <m1>…</m1> 这类标记转成可渲染的 HTML。
+     escFn 负责文本转义（不转义标签），未知标签一律当纯文本输出，防止注入。 */
+  ZP.paintTechMarks = function (text, escFn, wrap) {
+    var raw = String(text == null ? "" : text);
+    var keys = ZP.TECH_MARKS.map(function (t) { return t.key; }).join("|");
+    var safe = escFn(raw);
+    var re = new RegExp("&lt;(" + keys + ")&gt;([\\s\\S]*?)&lt;/\\1&gt;", "g");
+    return safe
+      .replace(re, function (all, k, inner) { return wrap(k, inner); })
+      .replace(/&lt;\/?(?:m1|m2|m3|m4)&gt;/g, "");
   };
 })(window.ZP);

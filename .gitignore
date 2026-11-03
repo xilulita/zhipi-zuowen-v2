@@ -29,3 +29,7 @@ qa/
 # 开发过程中的临时拆分文件（内容已合并进主文件）
 assets/*.part.js
 assets/*.part.html
+
+# 已废弃的补丁拆分文件（功能已并入 app.js，index.html 不再加载）
+assets/js/patch-docs.js
+assets/js/patch-history.js

@@ -35,6 +35,9 @@
   /* 编号元素的实际占位宽度（px） */
   var NUM_W = 21;
 
+  /* 写作思路分段用：按换行或「1. 2. 3.」序号切分（用 RegExp 构造，避免源码转义） */
+  var NL_OR_NUM = new RegExp(String.fromCharCode(10) + "|(?=[0-9]{1,2}[.、])");
+
   function num() {
     for (var i = 0; i < arguments.length; i++) {
       var v = arguments[i];
@@ -109,6 +112,32 @@
    * 整张引线图就会被非等比拉伸，虚线随之歪出图片两侧。
    * 这里直接取 getBoundingClientRect 的实际像素尺寸，保证坐标 1:1。
    */
+  /* 让批注列按内容高度撑开。
+   * .annot 是绝对定位，不会推动父元素；这里放一个 0 宽的占位块撑高列，
+   * 列高了 → .paper-grid 行高变高 → .paper 变高 → .stage-scroll 可滚动。
+   * 同时保证纸张本身至少和批注列一样高，避免批注超出纸面被裁。 */
+  function fitAnnCols(leftCol, rightCol, bottomL, bottomR) {
+    [ [leftCol, bottomL], [rightCol, bottomR] ].forEach(function (pair) {
+      var col = pair[0], bottom = pair[1];
+      if (!col) return;
+      var need = Math.ceil(bottom + 12);
+      var spacer = col.querySelector(".ann-spacer");
+      if (!spacer) {
+        spacer = document.createElement("div");
+        spacer.className = "ann-spacer";
+        spacer.setAttribute("aria-hidden", "true");
+        col.appendChild(spacer);
+      }
+      spacer.style.height = Math.max(0, need) + "px";
+    });
+    var paper = document.querySelector("#paper");
+    if (paper) {
+      var h = Math.ceil(Math.max(bottomL || 0, bottomR || 0) + 12);
+      // 纸张内容区至少与批注一样高，否则批注会伸到纸外
+      paper.style.minHeight = h ? h + "px" : "";
+    }
+  }
+
   function syncLeaderViewBox(paper, svg) {
     if (!paper || !svg) return;
     var r = paper.getBoundingClientRect();
@@ -184,9 +213,13 @@
     col.appendChild(body);
 
     var items = [];
-    var anns = result.annotations || [];
+    /* 字段兼容：界面内部用 annotations / paragraphs，
+       而历史记录与 AI 归一化结果是 annos / essay.paras。
+       只认前者会导致「从历史打开的报告一条批注都不显示」。 */
+    var anns = result.annotations || result.annos || [];
+    var paras = result.paragraphs || (result.essay && result.essay.paras) || [];
 
-    (result.paragraphs || []).forEach(function (para, pi) {
+    paras.forEach(function (para, pi) {
       var p = document.createElement("p");
       p.dataset.para = pi;
 
@@ -250,7 +283,8 @@
     /* 1) 精确匹配原文引句 */
     var pending = [];
     mine.forEach(function (a) {
-      var s = a.sentence || "";
+      /* 引句字段：AI 新结果用 sentence，历史记录里存的是 quote，两者都要认 */
+      var s = a.sentence || a.quote || "";
       if (!s) { pending.push(a); return; }
       var idx = text.indexOf(s);
       if (idx >= 0 && addMark(idx, idx + s.length, a)) return;
@@ -259,6 +293,13 @@
       if (clean && clean !== s) {
         var i2 = text.indexOf(clean);
         if (i2 >= 0 && addMark(i2, i2 + clean.length, a)) return;
+      }
+      /* 引句常被截断成「我坐在书桌前，笔尖停在纸上，像被什么东西…」，
+         直接 indexOf 必然失败。取省略号前的前缀再试，命中后按前缀长度标注。 */
+      var head = s.split(/[….]+/)[0].replace(/[「」『』"“”'‘’\s]/g, "");
+      if (head && head.length >= 4 && head !== clean) {
+        var i3 = text.indexOf(head);
+        if (i3 >= 0 && addMark(i3, i3 + head.length, a)) return;
       }
       pending.push(a);
     });
@@ -269,7 +310,7 @@
       pending.forEach(function (a) {
         var best = null, bestScore = 0;
         clauses.forEach(function (c) {
-          var sc = dice(a.sentence || "", c.text);
+          var sc = dice(a.sentence || a.quote || "", c.text);
           if (sc > bestScore) { bestScore = sc; best = c; }
         });
         if (best && bestScore >= 0.30) addMark(best.start, best.end, a);
@@ -309,8 +350,10 @@
 
       var idx = items.length;
       items.push({
-        para: pi, type: m.a.type, tag: m.a.tag, sentence: m.a.sentence,
-        note: m.a.note, fix: m.a.fix
+        para: pi, type: m.a.type, tag: m.a.tag,
+        sentence: m.a.sentence || m.a.quote,
+        /* 正文：AI 新结果用 note，历史记录里存的是 html */
+        note: m.a.note || m.a.html || m.a.comment || "", fix: m.a.fix
       });
       span.dataset.ann = idx;
       var dot = document.createElement("span");
@@ -389,7 +432,7 @@
     rightCol.innerHTML = "";
     svg.innerHTML = "";
 
-    var list = items.filter(function (x) { return x.note || x.fix; });
+    var list = items.filter(function (x) { return x.note || x.fix || x.html; });
     if (!list.length) return;
 
     /* 全部以纸张为参照系：SVG 覆盖整张纸 */
@@ -459,8 +502,12 @@
       sent.addEventListener("click", function () { focusAnn(i); });
     });
 
-    leftCol.style.minHeight = (bottomL + 12) + "px";
-    rightCol.style.minHeight = (bottomR + 12) + "px";
+    /* 批注是 position:absolute，不会撑开父容器。只设 minHeight 时，
+       .paper-grid 的行高仍由纸张决定，超出的批注会被裁在网格外：
+       既看不见、也让外层 .stage-scroll 没有可滚动内容。
+       这里按批注实际底部撑开列高，再同步撑开纸张内边距，
+       让整页变高后画板能纵向滚动。 */
+    fitAnnCols(leftCol, rightCol, bottomL, bottomR);
 
     syncLeaderViewBox(paper, svg);
 
@@ -540,7 +587,7 @@
       band.style.top = y + "%";
       band.style.left = x1 + "%";
       band.style.width = Math.max(6, Math.min(100 - x1, x2 - x1)) + "%";
-      band.title = "#" + gk2 + " " + (a.note || "");
+      band.title = "#" + gk2 + " " + annText(a);
       band.dataset.ann = i;
       band.dataset.y = y;
       band.dataset.x1 = x1;
@@ -602,7 +649,7 @@
       num.style.left = lx + "%";
       num.style.top = ntY + "%";
       num.dataset.ann = i;
-      num.title = "#" + (gk2) + " " + (a.note || "");
+      num.title = "#" + (gk2) + " " + annText(a);
       num.addEventListener("click", function (e) {
         e.stopPropagation();
         if (num.dataset.dragged === "1") { num.dataset.dragged = ""; return; }
@@ -613,9 +660,32 @@
     });
   }
 
+  /* ===== 批注/段落字段统一取值 =====
+   * 界面内部历史上用 annotations / paragraphs，
+   * 而 AI 归一化结果与历史记录里存的是 annos / essay.paras。
+   * 之前各处直接读 annotations，导致「打开历史记录或图片模式时批注整块消失」，
+   * 也连带让批注列撑不开高度、画板滚不动。这里统一收敛，避免再漏。 */
+  function annList(result) {
+    if (!result) return [];
+    if (Array.isArray(result.annotations)) return result.annotations;
+    if (Array.isArray(result.annos)) return result.annos;
+    return [];
+  }
+  function paraList(result) {
+    if (!result) return [];
+    if (Array.isArray(result.paragraphs)) return result.paragraphs;
+    if (result.essay && Array.isArray(result.essay.paras)) return result.essay.paras;
+    return [];
+  }
+  /* 单条批注正文：新结果用 note，历史记录用 html */
+  function annText(a) {
+    if (!a) return "";
+    return a.note || a.html || a.comment || "";
+  }
+
   /* 判断批注是否带真实位置，用于提示文案 */
   function hasBox(result) {
-    var list = (result && result.annotations) || [];
+    var list = annList(result);
     var n = 0;
     list.forEach(function (a) { if (a.box) n++; });
     return n > 0 && n >= Math.ceil(list.length / 2);
@@ -632,11 +702,11 @@
     var ratio = img && img.width && img.height ? img.height / img.width : 1.414;
     var maxW = img && img.width ? Math.min(img.width, 640) : 640;
 
-    var hasAnns = !!(result && (result.annotations || []).length && S.view === "image");
+    var hasAnns = !!(annList(result).length && S.view === "image");
 
     col.innerHTML =
       '<div class="essay-sheet" style="max-width:' + maxW + 'px">' +
-        '<img src="' + src + '" alt="作文原稿">' +
+        '<img src="' + src + '" alt="作文原稿" style="aspect-ratio:' + (1 / ratio) + '">' +
         '<div class="hl-layer" id="hlLayer" aria-hidden="true"></div>' +
       "</div>" +
       '<p class="img-hint">' +
@@ -678,34 +748,9 @@
     if (imgEl && !imgEl.complete) {
       imgEl.addEventListener("load", relayout);
     }
-
-    /* 图层必须严格贴合图片本体：把 .hl-layer 的尺寸锁到图片的真实渲染矩形。
-       否则容器（受 max-height 影响的图片 + 边框/内边距）与图片本体尺寸不一致，
-       按百分比画的荧光条就会整体偏移、全挤到一侧。 */
-    function syncLayerBox() {
-      var im = $(".essay-sheet img", paper);
-      var sh = $(".essay-sheet", paper);
-      var ly = $("#hlLayer", paper);
-      if (!im || !sh || !ly) return;
-      if (!im.naturalWidth || !im.getBoundingClientRect().width) return;
-      var sr = sh.getBoundingClientRect(), ir = im.getBoundingClientRect();
-      /* 以图片为基准：左/上偏移 = 图片相对容器的位移，宽高 = 图片实际尺寸 */
-      ly.style.left = (ir.left - sr.left - sh.clientLeft) + "px";
-      ly.style.top = (ir.top - sr.top - sh.clientTop) + "px";
-      ly.style.width = ir.width + "px";
-      ly.style.height = ir.height + "px";
-      ly.style.right = "auto";
-      ly.style.bottom = "auto";
-    }
-    function relayoutAll() { syncLayerBox(); relayout(); }
-    if (imgEl) {
-      if (!imgEl.complete) imgEl.addEventListener("load", relayoutAll);
-      else syncLayerBox();
-    }
-    window.addEventListener("resize", syncLayerBox);
     if (typeof ResizeObserver !== "undefined") {
       if (paper.__zpRO) { try { paper.__zpRO.disconnect(); } catch (e) {} }
-      var ro = new ResizeObserver(function () { relayoutAll(); });
+      var ro = new ResizeObserver(function () { relayout(); });
       ro.observe(paper);
       paper.__zpRO = ro;
     }
@@ -714,7 +759,7 @@
     if (hasAnns) {
       var bar = document.createElement("div");
       bar.className = "adjust-bar";
-      var anyAdj = (result.annotations || []).some(hasAdj);
+      var anyAdj = annList(result).some(hasAdj);
       bar.innerHTML =
         '<span class="ab-hint"><i></i>划线可整条拖动，两端小圆点改长短；编号与左侧卡片也能拖</span>' +
         '<button type="button" id="adjReset"' + (anyAdj ? '' : ' hidden') + '>还原位置</button>';
@@ -735,14 +780,14 @@
     var sheet = $(".essay-sheet", paper);
     if (!leftCol || !rightCol || !svg || !sheet) return;
 
-    var all = result.annotations || [];
+    var all = annList(result);
     var curPage = S.imgPage || 0;
     /* 多页原稿：本页只显示属于这一页的批注 */
     var anns = all.filter(function (a) { return (a.page || 0) === curPage; });
-    if (!anns.length && all.length && !result.annotations.some(function(a){ return a.page !== undefined; })) {
+    if (!anns.length && all.length && !all.some(function(a){ return a.page !== undefined; })) {
       anns = all; /* 老数据没有 page 字段时退回显示全部 */
     }
-    var totalPara = Math.max(1, (result.paragraphs || []).length || 1);
+    var totalPara = Math.max(1, paraList(result).length || 1);
     var sheetRect = sheet.getBoundingClientRect();
 
     leftCol.innerHTML = "";
@@ -860,8 +905,12 @@
       el.addEventListener("click", function () { focusAnn(gid); });
     });
 
-    leftCol.style.minHeight = (bottomL + 12) + "px";
-    rightCol.style.minHeight = (bottomR + 12) + "px";
+    /* 批注是 position:absolute，不会撑开父容器。只设 minHeight 时，
+       .paper-grid 的行高仍由纸张决定，超出的批注会被裁在网格外：
+       既看不见、也让外层 .stage-scroll 没有可滚动内容。
+       这里按批注实际底部撑开列高，再同步撑开纸张内边距，
+       让整页变高后画板能纵向滚动。 */
+    fitAnnCols(leftCol, rightCol, bottomL, bottomR);
 
     syncLeaderViewBox(paper, svg);
 
@@ -875,15 +924,10 @@
      ============================================================ */
   var dragState = null;
 
-  function pxPerPctY() {
-    var img = $("#essayCol .essay-sheet img");
-    if (!img || !img.getBoundingClientRect().height) return 4;
-    return img.getBoundingClientRect().height / 100;
-  }
-
   function annOfGid(gid) {
-    if (!S.result || !Array.isArray(S.result.annotations)) return null;
-    var a = S.result.annotations[gid];
+    var list = annList(S.result);
+    if (!list.length) return null;
+    var a = list[gid];
     return a && typeof a === "object" ? a : null;
   }
 
@@ -1013,9 +1057,17 @@
     b.style.top = y + "%";
     b.style.left = x1 + "%";
     b.style.width = Math.max(6, Math.min(100 - x1, x2 - x1)) + "%";
+    /* ★ dataset 必须同步：startDrag 以 dataset 作为下一次拖动的基准，
+       只改 style 不改 dataset，第二次拖动会拿旧基准算，出现「拖了不动/瞬移」 */
+    b.dataset.y = y;
+    b.dataset.x1 = x1;
+    b.dataset.x2 = x2;
     st.grips && Array.prototype.forEach.call(st.grips, function (g) {
       g.style.top = y + "%";
       g.style.left = (g.dataset.edge === "x1" ? x1 : x2) + "%";
+      g.dataset.y = y;
+      g.dataset.x1 = x1;
+      g.dataset.x2 = x2;
     });
   }
 
@@ -1055,18 +1107,40 @@
 
   /* 事件挂载点：由 paintHighlights / layoutImageAnnotations 调用 */
   ZP.onBandMounted = function (band, gid) {
+    /* 指针进入时按住 Alt：临时放开端点把手，进入「改长短」模式 */
+    band.addEventListener("pointermove", function (e) {
+      var g = e.altKey;
+      if (band.classList.contains("grip-mode") !== g) band.classList.toggle("grip-mode", g);
+      band.style.cursor = g ? "ew-resize" : "grab";
+    });
+    band.addEventListener("pointerleave", function () {
+      band.classList.remove("grip-mode");
+      band.style.cursor = "";
+    });
+
     band.addEventListener("pointerdown", function (e) {
-      /* 点在端点上时由把手自己处理，避免同时触发整条平移 */
-      if (e.target && e.target.classList && e.target.classList.contains("hl-grip")) {
+      /* 端点把手只响应 Alt+拖动：其余情况一律走「整条平移」，
+         避免想移动时点到圆点、结果只把线拉长，看起来像没反应 */
+      var onGrip = e.target && e.target.classList && e.target.classList.contains("hl-grip");
+      if (onGrip && !e.altKey) {
         e.stopPropagation();
+        startDrag("band", e, gid, band);
         return;
       }
+      if (onGrip) { e.stopPropagation(); return; }   /* Alt+端点：交给 grip 自己的监听 */
       startDrag("band", e, gid, band);
     });
   };
 
   ZP.onBandGripMounted = function (grip, gid, edge) {
     grip.addEventListener("pointerdown", function (e) {
+      /* 必须按住 Alt 才进入「改端点」；否则交给整条平移 */
+      if (!e.altKey) {
+        e.stopPropagation();
+        var bandEl = $('.hl-band[data-ann="' + gid + '"]');
+        if (bandEl) startDrag("band", e, gid, bandEl);
+        return;
+      }
       e.stopPropagation();
       startDrag("grip", e, gid, grip, { edge: edge });
     });
@@ -1135,6 +1209,10 @@
         '<div class="pe-icon"><svg viewBox="0 0 44 44" fill="none"><path d="M11 9.5h15.5L34 17v17.5H11z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M26 9.5V17h8" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M16.5 23.5h12M16.5 28h8.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></div>' +
         '<h3>等待作文原稿</h3>' +
         '<p>拖入作文照片，或在左侧粘贴正文文字。<br>载入后点击「开始 AI 批改」生成四维报告。</p>' +
+        '<button class="pe-demo" type="button" data-demo="1">' +
+          '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2.6 8.6 5.6 12 6.1 9.5 8.5 10.1 12 7 10.4 3.9 12 4.5 8.5 2 6.1 5.4 5.6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>' +
+          "看演示效果" +
+        "</button>" +
       "</div>";
   }
 
@@ -1157,7 +1235,6 @@
         "</span><b>" + hit.score + "</b></div>";
     }).join("");
 
-    $("#reportDisclaimer").textContent = r.disclaimer || "";
     var pill = $("#statusPill");
     pill.textContent = r.isDemo ? "演示" : "已完成";
     pill.className = "status-pill" + (r.isDemo ? "" : " done");
@@ -1212,8 +1289,9 @@
     var cx = cssW / 2, cy = cssH / 2;
     /* 窄栏下字号随宽度缩放，保证 4 个轴标签都能放下 */
     var narrow = cssW < 220;
-    var fName = narrow ? 8.4 : (cssW < 300 ? 9.4 : 10.4);
-    var fScore = narrow ? 8.2 : (cssW < 300 ? 9.2 : 10);
+    /* 报告栏字号上调后同步放大雷达标签，窄画布下也不再压到 8px */
+    var fName = narrow ? 9.6 : (cssW < 300 ? 10.4 : 11.2);
+    var fScore = narrow ? 9.4 : (cssW < 300 ? 10.2 : 11);
     /* 文字边距按比例收缩：窄栏留 22px，宽栏仍留 38px */
     /* 左右要能完整放下 4 字轴标签（约 4×字号），上下要放下「名称＋分值」两行 */
     var padX = narrow ? Math.max(Math.ceil(fName * 4 * 0.95), Math.round(cssW * 0.17)) : 38;
@@ -1384,7 +1462,7 @@
           return '<div class="ann-row" style="--c:' + (TYPE_COLOR[a.type] || "#7a5cc4") + '" data-ann="' + i + '">' +
             '<span class="arc"><i></i></span>' +
             '<span class="atx"><b>' + esc(TYPE_LABEL[a.type] || "批注") + "</b>" +
-              "<span>" + rich(a.note) + "</span>" +
+              "<span>" + rich(annText(a)) + "</span>" +
               (a.fix ? "<em>" + rich(a.fix) + "</em>" : "") +
             "</span>" +
           "</div>";
@@ -1395,26 +1473,76 @@
 
   /* ---- Tab 2 ---- */
   function renderOutline(r) {
+    /* issues 为后加字段：旧报告没有，缺失时整块不渲染 */
     var o = r.outline || {};
     var steps = [o.begin, o.middle, o.end].filter(Boolean);
-    var html =
-      '<div class="blk">' +
-        '<div class="blk-head"><h4>写作思路大纲</h4><i></i><span class="blk-meta">' +
-        esc(r.meta.split(" · ")[0]) + " 通用路径</span></div>" +
+    var issues = Array.isArray(r.issues) ? r.issues : [];
+
+    var html = "";
+
+    /* ---- 参考写作思路：按「开头 / 中间 / 结尾」给可直接照做的路径 ---- */
+    if (steps.length) {
+      html += '<div class="blk">' +
+        '<div class="blk-head"><h4>参考写作思路</h4><i></i><span class="blk-meta">' +
+        esc((r.meta || "").split(" · ")[0]) + " 重写提纲</span></div>" +
+        '<div class="ol-note">按本文题目与内容生成，可作为重新构思一篇作文时的客观提纲。</div>' +
         '<div class="outline-flow">' +
-          steps.map(function (s) {
-            return '<div class="ol-step"><div class="ol-tag">' + esc(s.title) + "</div>" +
-              "<p>" + rich(s.text) + "</p></div>";
+          steps.map(function (st) {
+            var text = rich(st.text || "");
+            /* 模型用「1. 2. 3.」分条时转成有序列表，与参考样式一致 */
+            var lines = (st.text || "").split(NL_OR_NUM).map(function (x) { return x.trim(); })
+              .filter(Boolean);
+            var numRe = /^[0-9]{1,2}[.、]\s*/;
+            var hasNum = lines.some(function (x) { return numRe.test(x); });
+            var body;
+            if (hasNum) {
+              /* 首句可能是不带序号的引导语，单独成段；其余按序号转成有序列表 */
+              var lead = [], items = [], started = false;
+              lines.forEach(function (ln) {
+                if (numRe.test(ln)) { started = true; items.push(ln.replace(numRe, "")); }
+                else if (!started) lead.push(ln);
+                else if (items.length) items[items.length - 1] += ln;
+              });
+              body = (lead.length ? "<p>" + rich(lead.join("")) + "</p>" : "") +
+                (items.length
+                  ? '<ol class="ol-list">' + items.map(function (ln) {
+                      return "<li>" + rich(ln) + "</li>";
+                    }).join("") + "</ol>"
+                  : "");
+            } else {
+              body = "<p>" + text + "</p>";
+            }
+            return '<div class="ol-step"><div class="ol-tag">' + esc(st.title) + "</div>" + body + "</div>";
           }).join("") +
         "</div>" +
       "</div>";
-
-    if (o.keys && o.keys.length) {
-      html += '<div class="blk"><div class="blk-head"><h4>写好这类作文的关键</h4><i></i></div>' +
-        '<div class="tip-card"><h5>写作小技巧</h5><ul>' +
-        o.keys.map(function (k) { return "<li>" + rich(k) + "</li>"; }).join("") +
-        "</ul></div></div>";
     }
+
+    /* ---- 具体问题与修改思路：整篇层面的问题归纳，每条含方向与步骤 ---- */
+    if (issues.length) {
+      html += '<div class="blk">' +
+        '<div class="blk-head"><h4>具体问题与修改思路</h4><i></i><span class="blk-meta">' +
+        issues.length + " 项 · 按优先级排列</span></div>" +
+        issues.map(function (it, i) {
+          var stepsHtml = (it.steps || []).length
+            ? '<ol class="fix-steps">' + it.steps.map(function (t) { return "<li>" + rich(t) + "</li>"; }).join("") + "</ol>"
+            : "";
+          return '<div class="issue">' +
+            '<div class="issue-top"><span class="issue-no">' + (it.no || i + 1) + "</span>" +
+              '<p class="issue-problem">' + rich(it.problem || "") + "</p></div>" +
+            (it.advice
+              ? '<div class="issue-advice"><span class="ia-lb">修改思路</span><p>' + rich(it.advice) + "</p></div>"
+              : "") +
+            (stepsHtml ? '<div class="issue-steps"><span class="ia-lb">怎么做</span>' + stepsHtml + "</div>" : "") +
+          "</div>";
+        }).join("") +
+      "</div>";
+    }
+
+    if (!html) {
+      html = '<div class="blk"><div class="comment-card overall-text">本次未生成写作思路，可点击「开始 AI 批改」重新生成。</div></div>';
+    }
+
     $("#panelOutline").innerHTML = html;
   }
 
@@ -1443,11 +1571,47 @@
   }
 
   /* ---- Tab 4 ---- */
+  /* 润色稿正文：把 <m1>…</m4> 转成对应手法的底色与字色。
+     标记之外的文字保持正文色，避免整篇单色难辨重点。 */
+  function techBody(text) {
+    return ZP.paintTechMarks(text, esc, function (k, inner) {
+      var mk = ZP.techMarkOf(k);
+      if (!mk) return inner;
+      return '<span class="tech-span" style="--c:' + mk.color + '">' + inner + "</span>";
+    });
+  }
+
+  /* 颜色图例：只列出本篇实际出现的标记，没出现的类别不占位 */
+  function legendHtml(p) {
+    var body = (p.paras || []).join("");
+    var used = ZP.TECH_MARKS.filter(function (t) { return body.indexOf("<" + t.key + ">") >= 0; });
+    if (!used.length) return "";
+    return '<div class="tech-legend">' + used.map(function (t) {
+      return '<span style="--c:' + t.color + '"><i></i>' + esc(t.name) + "</span>";
+    }).join("") + "</div>";
+  }
+
   function renderPolished(r) {
     var p = r.polished || { paras: [], words: 0 };
     var g = ZP.getGrade(r.grade || S.grade);
-    var words = p.words || ZP.countChars((p.paras || []).join(""));
+    var words = p.words || ZP.countChars(ZP.stripTechMarks((p.paras || []).join("")));
     var inRange = words >= g.words[0] && words <= g.words[1];
+
+    /* 范文没生成出来：给出可执行的原因与下一步，不再只留一片空白 */
+    if (!(p.paras || []).length) {
+      var why = r.polishFailed === "no_source"
+        ? "这次的批改没有取到原文句子（图片稿的批注可能未带原句），生成范文缺少依据。"
+        : (r.polishFailed ? "生成范文时出错：" + esc(String(r.polishFailed).slice(0, 120)) : "");
+      $("#panelPolished").innerHTML =
+        '<div class="blk"><div class="blk-head"><h4>润色后文章</h4><i></i>' +
+          '<span class="blk-meta">本次未生成</span></div>' +
+          '<div class="comment-card overall-text">' +
+            (why ? "<p>" + why + "</p>" : "") +
+            '<p>可这样处理：① 在左侧「稿源文本」里粘贴作文正文后重新批改；' +
+            '② 或换用能逐字照抄原句的视觉模型；③ 已生成的评分与批注仍然有效，不受影响。</p>' +
+          "</div></div>";
+      return;
+    }
 
     var html =
       '<div class="blk">' +
@@ -1455,14 +1619,35 @@
           '<span class="ph-l">' + esc(g.name) + "要求 " + g.words[0] + "–" + g.words[1] + " 字</span>" +
           '<span class="ph-r">' + fmt(words) + "<em>字</em></span>" +
         "</div>" +
+        legendHtml(p) +
         '<div class="polished-body">' +
           "<h5>" + esc(p.title || r.title) + "</h5>" +
-          (p.paras || []).map(function (t) { return "<p>" + esc(t) + "</p>"; }).join("") +
+          (p.paras || []).map(function (t) { return "<p>" + techBody(t) + "</p>"; }).join("") +
         "</div>" +
         '<div class="range-note' + (inRange ? "" : " warn") + '">' +
           (inRange ? "字数落在本年级区间内" : "字数偏离本年级要求区间，建议增删细节后重试") +
         "</div>" +
       "</div>";
+
+    /* 本次使用的润色手法：旧报告与被字数校准覆盖时可能缺该字段，缺失则整块不渲染 */
+    var tech = (Array.isArray(p.techniques) ? p.techniques : []).filter(function (t) {
+      return t && (typeof t === "object" ? String(t.text || "").trim() : String(t).trim());
+    });
+    if (tech.length) {
+      html += '<div class="blk tech-blk">' +
+        '<div class="blk-head"><h4>本次使用的润色手法</h4><i></i><span class="blk-meta">' +
+        tech.length + " 条 · 对照原文查看改动</span></div>" +
+        '<ul class="tech-list">' +
+          tech.map(function (t) {
+            var mk = ZP.techMarkOf(t && t.mark);
+            var label = mk ? '<b class="tech-key" style="--c:' + mk.color + '">' + esc(mk.name) + "</b>" : "";
+            var body = String((t && t.text) || t || "");
+            return "<li" + (mk ? ' style="--c:' + mk.color + '"' : "") + ">" + label + "<span>" + rich(body) + "</span></li>";
+          }).join("") +
+        "</ul>" +
+      "</div>";
+    }
+
     $("#panelPolished").innerHTML = html;
   }
 
@@ -1496,7 +1681,7 @@
     opts = opts || {};
     var images = opts.images || [];
     var page = opts.page || 0;
-    var all = (result && result.annotations) || [];
+    var all = annList(result);
     var anns = all.filter(function (a) { return (a.page || 0) === page; });
     if (!anns.length && all.length && !all.some(function (a) { return a.page !== undefined; })) anns = all;
     if (!anns.length) return "";
@@ -1546,7 +1731,7 @@
           ' style="top:' + it.pos.y.toFixed(2) + "%;border-left-color:" + it.color + '">' +
           '<span class="bno" style="background:' + it.color + '">' + it.no + "</span>" +
           '<div class="btag" style="color:' + it.color + '">' + esc(it.a.tag || TYPE_SHORT[it.a.type] || "") + "</div>" +
-          '<div class="bnote">' + esc(it.a.note || "") + "</div>" +
+          '<div class="bnote">' + esc(annText(it.a)) + "</div>" +
           (it.a.fix ? '<div class="bfix' + (it.a.type === "red" ? " fix-short" : "") + '"><i>' +
             (it.a.type === "red" ? "正确写法" : "改写例句") + "</i>" + esc(it.a.fix) + "</div>" : "") +
         "</div>";
