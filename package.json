@@ -1,7 +1,7 @@
 {
-  "name": "zhipi-zuowen",
+  "name": "bimo-shengxiang",
   "productName": "笔墨生香",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "笔墨生香 · AI 作文批改工作台（网页版 + Electron 桌面版）",
   "main": "main.js",
   "author": "笔墨生香",
@@ -9,14 +9,15 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --win nsis --prepackaged dist/win-unpacked",
+    "pack": "electron-builder --dir && node scripts/brand-exe.js && npm run dist"
   },
   "devDependencies": {
     "electron": "^32.2.0",
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.zhipi.zuowen",
+    "appId": "com.bimo.shengxiang",
     "productName": "笔墨生香",
     "copyright": "Copyright © 2026 笔墨生香",
     "directories": {
@@ -42,8 +43,7 @@
       ],
       "icon": "build/icon.ico",
       "artifactName": "笔墨生香-${version}-安装包.${ext}",
-      "signAndEditExecutable": false,
-      "sign": null
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,

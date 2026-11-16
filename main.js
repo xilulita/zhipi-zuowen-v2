@@ -55,7 +55,7 @@ if (!gotLock) {
     win.on("closed", () => { win = null; });
   }
 
-  app.setAppUserModelId("com.zhipi.zuowen");
+  app.setAppUserModelId("com.bimo.shengxiang");
 
   /* 极简菜单：只保留退出的快捷键，避免默认英文菜单 */
   function buildMenu() {
