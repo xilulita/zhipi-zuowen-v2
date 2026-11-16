@@ -27,7 +27,9 @@
       "main.js",
       "preload.js",
       "index.html",
-      "assets/**/*"
+      "assets/**/*",
+      "!assets/icon-candidates/**",
+      "!**/__qa_*"
     ],
     "win": {
       "target": [
