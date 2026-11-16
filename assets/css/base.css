@@ -1,5 +1,5 @@
 /* ============================================================
-   智批作文 · 设计系统与外壳
+   笔墨生香 · 设计系统与外壳
    设计令牌 / 三栏栅格 / 左侧功能栏
    ============================================================ */
 :root{
@@ -101,6 +101,7 @@ svg{display:block}
   box-shadow:0 6px 14px -9px rgba(120,50,35,.6);
 }
 .brand-mark svg{width:36px;height:36px;display:block}
+.brand-mark img{width:36px;height:36px;display:block;border-radius:10px}
 .brand-text h1{
   font-size:16.5px;font-weight:650;letter-spacing:.14em;line-height:1.2;color:var(--ink);
 }

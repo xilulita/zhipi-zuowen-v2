@@ -25,6 +25,7 @@ qa/
 *.tmp
 .playwright-mcp/
 *.artifact.json
+__qa_*
 
 # 开发过程中的临时拆分文件（内容已合并进主文件）
 assets/*.part.js

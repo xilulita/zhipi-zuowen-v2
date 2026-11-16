@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>智批作文 · AI 批改工作台</title>
-<meta name="description" content="智批作文：面向小学高年级与初中的 AI 作文批改工作台，四维评分、双侧批注、升格范文与小练笔。" />
+<title>笔墨生香 · AI 批改工作台</title>
+<meta name="description" content="笔墨生香：面向小学高年级与初中的 AI 作文批改工作台，四维评分、双侧批注、升格范文与小练笔。" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />
-<link rel="stylesheet" href="assets/css/base.css?v=705abda2" />
-<link rel="stylesheet" href="assets/css/app.css?v=81e76374" />
+<link rel="stylesheet" href="assets/css/base.css?v=icon-final" />
+<link rel="stylesheet" href="assets/css/app.css?v=regrade-v9" />
 </head>
 <body>
 <div class="splash" id="splash" aria-hidden="true">
-  <div class="splash-mark"><span class="book-page left"></span><span class="book-page right"></span><span class="ink-dot"></span></div>
-  <div class="splash-name">智批作文</div><div class="splash-sub">读文 · 见意 · 成章</div>
+  <img class="splash-icon" src="assets/splash-icon.png?v=icon-final" alt="" draggable="false" />
+  <div class="splash-name">笔墨生香</div><div class="splash-sub">读文 · 见意 · 成章</div>
 </div>
 <div class="app" id="app">
 
@@ -20,44 +20,11 @@
   <aside class="sidebar">
     <div class="brand">
       <div class="brand-mark">
-        <!-- 与桌面图标同一套视觉：棕红底 + 打开的书 + 钢笔 -->
-        <svg viewBox="0 0 40 40" aria-hidden="true">
-          <defs>
-            <linearGradient id="bmBg" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#b05a3d"/>
-              <stop offset="1" stop-color="#3e211a"/>
-            </linearGradient>
-          </defs>
-          <rect width="40" height="40" rx="9" fill="url(#bmBg)"/>
-          <!-- 书页：顶部弧形展开 -->
-          <path d="M5.2 17.6c2.4-2.2 5.6-3.2 9.3-3.2v15.4c-3.7 0-6.9 1-9.3 3.2z" fill="#f6efe1"/>
-          <path d="M34.8 17.6c-2.4-2.2-5.6-3.2-9.3-3.2v15.4c3.7 0 6.9 1 9.3 3.2z" fill="#f6efe1"/>
-          <!-- 书脊 -->
-          <rect x="19.3" y="14.4" width="1.4" height="15.4" fill="#c7ae88"/>
-          <!-- 横线 -->
-          <g fill="#c9ba9b">
-            <rect x="7.2" y="19.6" width="9.4" height="1.1" rx="0.55"/>
-            <rect x="7.2" y="23.2" width="9.4" height="1.1" rx="0.55"/>
-            <rect x="7.2" y="26.8" width="6.2" height="1.1" rx="0.55"/>
-            <rect x="23.4" y="19.6" width="9.4" height="1.1" rx="0.55"/>
-            <rect x="23.4" y="23.2" width="9.4" height="1.1" rx="0.55"/>
-            <rect x="23.4" y="26.8" width="6.2" height="1.1" rx="0.55"/>
-          </g>
-          <!-- 书签圆点 -->
-          <circle cx="20" cy="10.6" r="2.5" fill="#c95941"/>
-          <circle cx="19.3" cy="9.9" r="0.8" fill="#eb9f86"/>
-          <!-- 钢笔：斜置右下 -->
-          <g transform="rotate(-40 27.5 27.5)">
-            <rect x="25.2" y="16.4" width="4.6" height="2.4" rx="0.5" fill="#b08a44"/>
-            <rect x="25.2" y="18.8" width="4.6" height="9.4" fill="#96261c"/>
-            <rect x="25.2" y="18.8" width="1.6" height="9.4" fill="#ba5034"/>
-            <rect x="25.2" y="28.2" width="4.6" height="1.5" fill="#b08a44"/>
-            <path d="M25.2 29.7h4.6l-2.3 4.6z" fill="#cec6b6"/>
-          </g>
-        </svg>
+        <!-- 与桌面图标同一张图：双页展开书 + 墨枝朱红梅（assets/brand-icon.png 由 build/icon.png 缩放） -->
+        <img src="assets/brand-icon.png?v=icon-final" alt="笔墨生香" draggable="false" />
       </div>
       <div class="brand-text">
-        <h1>智批作文</h1>
+        <h1>笔墨生香</h1>
         <p>AI COMPOSITION STUDIO</p>
       </div>
       <button class="bell-btn" id="bellBtn" type="button" aria-label="消息通知">
@@ -359,7 +326,7 @@
       </div>
       <div class="head-right">
         <!-- 用时已移除，只保留「用时」数据在报告内展示 -->
-        <!-- 导出：HTML 胶囊按钮 -->
+        <!-- 导出：HTML / PDF 胶囊按钮 -->
         <div class="export-tools" id="exportTools" hidden>
           <button class="exp-btn" id="exportHtmlBtn" type="button" title="导出为 HTML" aria-label="导出为 HTML">
             <svg class="exp-ico" viewBox="0 0 16 12" aria-hidden="true" fill="none">
@@ -368,6 +335,14 @@
             </svg>
             <span class="exp-txt">HTML</span>
             <span class="exp-tip">导出 HTML 报告</span>
+          </button>
+          <button class="exp-btn" id="exportPdfBtn" type="button" title="一键导出 PDF" aria-label="一键导出 PDF">
+            <svg class="exp-ico" viewBox="0 0 12 14" aria-hidden="true" fill="none">
+              <path d="M2.5 1.2h5l2.5 2.5v9.1h-7.5zM7.5 1.2v2.5h2.5M4 8.2h4M4 10.6h4"
+                    stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="exp-txt">PDF</span>
+            <span class="exp-tip">一键导出 PDF 报告</span>
           </button>
         </div>
       </div>
@@ -455,15 +430,37 @@
   </div>
 </div>
 
+<!-- 重复批改确认弹窗 -->
+<div class="modal" id="regradeModal" hidden>
+  <div class="modal-mask" data-regrade-close></div>
+  <div class="modal-card confirm-card" role="dialog" aria-modal="true" aria-labelledby="regradeTitle">
+    <header class="modal-head">
+      <div>
+        <h3 id="regradeTitle">这篇作文已批改过</h3>
+        <p id="regradeSub">重新批改将生成新报告并覆盖当前结果</p>
+      </div>
+      <button class="modal-x" type="button" data-regrade-close aria-label="关闭">×</button>
+    </header>
+    <div class="modal-body">
+      <p class="confirm-text" id="regradeInfo"></p>
+      <p class="confirm-note">旧报告会保留在「历史批改」中，可随时回看；本次重新批改会重新消耗接口额度。</p>
+      <div class="confirm-actions">
+        <button class="btn-line" type="button" data-regrade-close>取消</button>
+        <button class="btn-line primary" type="button" id="regradeConfirm">重新批改</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="assets/js/config.js?v=a0fc78e8"></script>
-<script src="assets/js/demo.js?v=a75b19be"></script>
-<script src="assets/js/ai.js?v=6c6b84f2"></script>
-<script src="assets/js/render.js?v=df0a4125"></script>
-<script src="assets/js/report-export.js?v=3b114e8a"></script>
+<script src="assets/js/config.js?v=genre-v4"></script>
+<script src="assets/js/demo.js?v=drill-v7"></script>
+<script src="assets/js/ai.js?v=drill-v7"></script>
+<script src="assets/js/render.js?v=drill-v7"></script>
+<script src="assets/js/report-export.js?v=font-v11"></script>
 <script src="assets/js/history.js?v=e543f6c9"></script>
 <script src="assets/js/notice.js?v=795c6fae"></script>
-<script src="assets/js/app.js?v=0790819e"></script>
+<script src="assets/js/app.js?v=regrade-v9"></script>
 </body>
 </html>

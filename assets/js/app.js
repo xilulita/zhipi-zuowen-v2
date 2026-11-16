@@ -1,5 +1,5 @@
 /* ============================================================
-   智批作文 · 应用主逻辑
+   笔墨生香 · 应用主逻辑
    状态管理 / 交互绑定 / 批改流程 / 导出
    ============================================================ */
 (function (ZP) {
@@ -101,33 +101,53 @@
    * 年级/体裁变更后，旧报告的评分口径已不同，标记为「过期」。
    * 只做标记、不清空：原稿、批注、报告全文都留着，用户可重新批改覆盖，
    * 也可切回原年级/体裁直接恢复。
+   *
+   * 显隐规则（该出现时才出现）：
+   * 1) 只有「报告口径 ≠ 当前选择」才显示；两者都按归一后的体裁名比较，
+   *    旧名（书信写作）与新名（书信日记）视为同一体裁，不算变更；
+   * 2) 报告缺少年级/体裁信息（老历史）时无从比较，不显示；
+   * 3) 每次渲染都按当前选择重算，持久化过的旧 stale 标记不再无条件沿用，
+   *    切回原口径、重新批改、换稿后提示自然消失。
    */
+  function staleReason() {
+    var r = S.result;
+    if (!r || S.demo) return null;
+    /* 原稿被替换的标记由图片流程自己维护，这里不覆盖 */
+    if (r.stale && r.stale.reason === "原稿图片") return r.stale;
+    if (r.genre && ZP.normGenre(r.genre) !== ZP.normGenre(S.genre)) {
+      return { reason: "体裁", at: (r.stale && r.stale.at) || Date.now() };
+    }
+    if (r.grade && r.grade !== S.grade) {
+      return { reason: "年级", at: (r.stale && r.stale.at) || Date.now() };
+    }
+    return null;
+  }
+
   function invalidateStale(reason) {
     if (S.demo) return;
     if (!S.result) return;
 
-    var source = reason === "年级" ? S.result.grade : S.result.genre;
-    var now = reason === "年级" ? S.grade : S.genre;
-    var unchanged = source === now;
     var was = !!S.result.stale;
-
-    /* 每次都按「报告口径 vs 当前选择」重算，切回原年级/体裁时标记会自然消失 */
-    S.result.stale = unchanged ? null : { reason: reason, at: Date.now() };
+    var st = staleReason();
+    S.result.stale = st;
 
     var cur2 = S.docs && S.docs[S.activeDoc];
     if (cur2) { cur2.result = S.result; saveDocs(); }
     paintStaleChip();
 
-    if (!unchanged && !was) {
+    if (st && !was) {
       toast(reason + "已变更，评分口径随之改变，报告仍保留供参考，可重新批改生成新报告。");
     }
   }
 
-  /* 报告头部的「待复核」提示条：切走、切回都会同步 */
+  /* 报告头部的「待复核」提示条：每次按「报告口径 vs 当前选择」现算，
+     不直接信任持久化的旧标记——切走、切回、重批、换稿都会同步 */
   function paintStaleChip() {
     var chip = $("#staleChip");
     if (!chip) return;
-    var st = S.result && S.result.stale;
+    var st = staleReason();
+    /* 现算结果回写，保证导出/队列里的标记与画面一致 */
+    if (S.result && !S.demo) S.result.stale = st;
     chip.hidden = !st;
     if (st) {
       chip.textContent = st.reason + "已变更 · 此为变更前的报告，重新批改可更新";
@@ -158,7 +178,35 @@
         b.innerHTML = '<span class="chip-emoji">' + (item.emoji || "✍️") + "</span>" +
           "<span>" + item.id + "</span>";
         b.dataset.genre = item.id;
+        /* 悬停浮层：题型 + 批改要点小字（与年级的 grade-fly 同款交互）。
+           原生 title 保留作兜底，浮层出现时视觉上取代它。 */
         if (item.hint) b.title = item.hint;
+        var fly = document.createElement("div");
+        fly.className = "genre-fly";
+        fly.innerHTML =
+          "<header><strong>" + item.id + " · 批改要点</strong>" +
+          "<i>" + (item.topics || []).slice(0, 3).join(" / ") + "</i></header>" +
+          ((item.focus || []).length
+            ? "<ul>" + item.focus.map(function (f) { return "<li>" + f + "</li>"; }).join("") + "</ul>"
+            : "") +
+          (item.hint ? "<p>适用题型：" + item.hint + "</p>" : "");
+        b.appendChild(fly);
+        /* 浮层用 fixed 定位，按按钮位置贴到侧栏右侧，避免被侧栏裁剪 */
+        b.addEventListener("mouseenter", function () {
+          var r = b.getBoundingClientRect();
+          fly.classList.add("show");
+          /* 先显示再量尺寸，钳制进视口：窄窗口时左移/上移，不出界 */
+          var w = fly.offsetWidth || 296;
+          var h = fly.offsetHeight || 150;
+          var left = Math.round(r.right + 10);
+          if (left + w > window.innerWidth - 8) left = window.innerWidth - 8 - w;
+          if (left < 8) left = 8;
+          var top = Math.round(r.top - 6);
+          if (top + h > window.innerHeight - 12) top = window.innerHeight - 12 - h;
+          fly.style.left = left + "px";
+          fly.style.top = Math.max(12, top) + "px";
+        });
+        b.addEventListener("mouseleave", function () { fly.classList.remove("show"); });
         b.addEventListener("click", function () {
           S.genre = item.id;
           $$(".chip", box).forEach(function (x) {
@@ -588,7 +636,7 @@
       var c = cv.getContext("2d");
       c.fillStyle = "#fff"; c.fillRect(0, 0, 420, 120);
       c.fillStyle = "#111"; c.font = "bold 44px sans-serif";
-      c.textAlign = "center"; c.fillText("智批作文", 210, 78);
+      c.textAlign = "center"; c.fillText("笔墨生香", 210, 78);
       var probe = cv.toDataURL("image/jpeg", 0.9);
 
       var out = await ZP.chat([
@@ -599,7 +647,7 @@
       ], { vision: true, temperature: 0, maxTokens: 30, timeout: 60000, noJsonForVision: true });
 
       var got = String(out || "").replace(/[\s　]/g, "");
-      if (got.indexOf("智批作文") >= 0) {
+      if (got.indexOf("笔墨生香") >= 0) {
         $("#visionState").textContent = "读图正常";
         $("#visionState").className = "cfg-state on";
         toast("视觉模型可用，能正确读取图片。", "ok");
@@ -870,6 +918,7 @@
     initThumbStrip();
     on("#historyBtn", "click", function () { if (ZP.History) ZP.History.open(); });
     on("#exportHtmlBtn", "click", exportReport);
+    on("#exportPdfBtn", "click", exportPdf);
     on("#nextEssayBtn", "click", startNextEssay);
     initDocQueue();
   }
@@ -1552,6 +1601,38 @@
   /* ---------------- 批改主流程 ---------------- */
   function initGradeButton() {
     $("#gradeBtn").addEventListener("click", runGrade);
+    initRegradeConfirm();
+  }
+
+  /* 重复批改确认弹窗：展示当前报告摘要，确认后重入 runGrade */
+  function openRegradeConfirm() {
+    var r = S.result || {};
+    var info = $("#regradeInfo");
+    if (info) {
+      var bits = [];
+      if (r.title) bits.push("《" + r.title + "》");
+      if (r.student && r.student !== "未署名") bits.push(r.student);
+      if (r.meta) bits.push(r.meta);
+      var score = (r.score != null) ? "当前报告：" + r.score + " 分" + (r.level ? " · " + r.level : "") : "当前已有一份批改报告";
+      info.textContent = (bits.length ? bits.join(" · ") + "。" : "") + score + "，确定要重新批改吗？";
+    }
+    $("#regradeModal").hidden = false;
+  }
+
+  function initRegradeConfirm() {
+    var modal = $("#regradeModal");
+    if (!modal) return;
+    Array.prototype.forEach.call(modal.querySelectorAll("[data-regrade-close]"), function (el) {
+      el.addEventListener("click", function () { modal.hidden = true; });
+    });
+    $("#regradeConfirm").addEventListener("click", function () {
+      modal.hidden = true;
+      runGrade._confirmed = true;
+      runGrade();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modal.hidden) modal.hidden = true;
+    });
   }
 
   async function runGrade() {
@@ -1561,6 +1642,14 @@
        注意：这里必须自己处理停止，不能再依赖另绑的 click 监听器，
        否则两个处理器都会触发，后者只会弹出「正在批改中」。 */
     if (doc.grading) { stopGrading(); return; }
+
+    /* 已批改过再点批改：先弹窗确认，避免误覆盖当前报告。
+       演示样例不拦（本来就是展示用）；确认后带 skipConfirm 重入。 */
+    if (S.result && !S.demo && !runGrade._confirmed) {
+      openRegradeConfirm();
+      return;
+    }
+    runGrade._confirmed = false;
     var docIndex = S.activeDoc;
     var ctl = new AbortController();
 
@@ -2128,7 +2217,8 @@
     S.demo = false;
     S.result = rec.result || rec;
     S.grade = rec.grade || S.grade;
-    S.genre = rec.genre || S.genre;
+    /* 旧体裁名（书信写作/状物描写等）归一到当前四字名，否则按钮无高亮 */
+    S.genre = ZP.normGenre(rec.genre || S.genre);
     S.student = rec.student || "";
     S.title = rec.title || "";
 
@@ -2355,7 +2445,8 @@
     S.title = doc.title || "";
     S.student = doc.student || "";
     S.grade = doc.grade || S.grade;
-    S.genre = doc.genre || S.genre;
+    /* 旧体裁名归一，保持按钮高亮与提示词口径一致 */
+    S.genre = ZP.normGenre(doc.genre || S.genre);
     S.result = doc.result || null;
     S.demo = false;
 
@@ -2505,24 +2596,35 @@
     }
   }
 
-  function exportReport() {
-    if (!S.result) { toast("暂无批改结果可导出。", "err"); return; }
+  /* 组装当前报告 HTML：HTML 导出与 PDF 导出共用同一份文档，
+     保证两种格式的版式、内容完全一致 */
+  function buildReportHtml() {
     var r = S.result;
-
     /* 雷达图：从画面上取一份位图，保证报告里的图和界面一致 */
     var radar = "";
     try { radar = $("#radar").toDataURL("image/png"); } catch (e) { radar = ""; }
 
-    /* 交给独立导出模块组装：
-       白板每页一张（含人工微调后的位置）→ 概览 → 思路 → 练笔 → 润色 */
-    var html = ZP.ReportExport.build(r, {
+    /* 白板每页一张（含人工微调后的位置）→ 概览 → 思路 → 练笔 → 润色；
+       稿源文本批改时没有图片，导出模块自动生成「文本原稿批注页」，
+       作文原文不再缺失 */
+    return ZP.ReportExport.build(r, {
       images: S.images || [],
+      text: S.text || "",
       weights: S.weights,
       radar: radar,
       withBoard: (r.source === "vision") && (S.images || []).length > 0
     });
+  }
 
-    var baseName = "智批作文报告_" + (r.student || "未署名") + "_" + (r.title || "作文");
+  function reportBaseName() {
+    var r = S.result || {};
+    return "笔墨生香报告_" + (r.student || "未署名") + "_" + (r.title || "作文");
+  }
+
+  function exportReport() {
+    if (!S.result) { toast("暂无批改结果可导出。", "err"); return; }
+    var html = buildReportHtml();
+    var baseName = reportBaseName();
 
     var blob = new Blob([html], { type: "text/html;charset=utf-8" });
     var a = document.createElement("a");
@@ -2537,7 +2639,154 @@
     toast("报告已导出为 HTML 文件。", "ok");
   }
 
-  /* 导出 PDF：复用 HTML 报告排版，交给浏览器打印为 PDF */
+  /* ---------------- 一键导出 PDF ----------------
+     桌面版：报告 HTML 交给主进程隐藏窗口排版 → printToPDF → 保存框，
+     点击即得与 HTML 同版式的 PDF。
+     浏览器版：同一份 HTML 放进隐藏 iframe，排版完成后调起打印，
+     选「另存为 PDF」即可（浏览器安全限制无法静默写盘）。 */
+  var pdfExporting = false;
+
+  function exportPdf() {
+    if (!S.result) { toast("暂无批改结果可导出。", "err"); return; }
+    if (pdfExporting) return;
+    var btn = $("#exportPdfBtn");
+    var html = buildReportHtml();
+    var baseName = reportBaseName();
+
+    if (window.zhipiDesktop && window.zhipiDesktop.exportPdf) {
+      pdfExporting = true;
+      if (btn) btn.classList.add("busy");
+      /* 主进程会立即弹出保存位置对话框；选完后自动生成，无需其他操作 */
+      window.zhipiDesktop.exportPdf({ html: html, baseName: baseName })
+        .then(function (ret) {
+          if (ret && ret.ok) {
+            toast("PDF 已保存：" + ret.filePath, "ok");
+          } else if (ret && ret.canceled) {
+            /* 用户取消保存，不算错误 */
+          } else if (ret && ret.error === "busy") {
+            toast("上一份 PDF 还在生成中，请稍候。", "err");
+          } else {
+            toast("PDF 导出失败：" + ((ret && ret.error) || "未知错误"), "err");
+          }
+        })
+        .catch(function (e) {
+          toast("PDF 导出失败：" + (e && e.message || e), "err");
+        })
+        .finally(function () {
+          pdfExporting = false;
+          if (btn) btn.classList.remove("busy");
+        });
+      return;
+    }
+
+    /* 浏览器环境：没有系统保存框权限，改为直接下载 PDF 文件——
+       用本页 Canvas 逐页绘制不现实，这里复用「打印→另存为 PDF」，
+       但先在新窗口完成自动排版，用户只需在打印框点一次保存。 */
+    pdfExporting = true;
+    if (btn) btn.classList.add("busy");
+    var frame = document.createElement("iframe");
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+    frame.setAttribute("aria-hidden", "true");
+    document.body.appendChild(frame);
+    var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    frame.src = URL.createObjectURL(blob);
+    var done = false;
+    function cleanup() {
+      setTimeout(function () {
+        try { URL.revokeObjectURL(frame.src); } catch (e) {}
+        frame.remove();
+        pdfExporting = false;
+        if (btn) btn.classList.remove("busy");
+      }, 1500);
+    }
+    frame.onload = function () {
+      try {
+        var doc = frame.contentDocument;
+        /* blob/srcdoc iframe 会继承主页面的严格 CSP（script-src 'self'），
+           报告内联的排版脚本会被拦。这里在父页面（有执行权）对 iframe
+           DOM 手动跑一遍同样的排版逻辑，保证打印版式与独立打开一致。 */
+        function layoutIn(d) {
+          function topIn(el, ref) {
+            var y = 0, n = el;
+            while (n && n !== ref) { y += n.offsetTop; n = n.offsetParent; }
+            return y;
+          }
+          function stack(cs, H, want) {
+            var hs = cs.map(function (c) { return c.offsetHeight; });
+            var total = hs.reduce(function (a, b) { return a + b; }, 0);
+            var tops = want.slice(), prev = -1e9, i;
+            if (total + 10 * (cs.length - 1) <= H) {
+              for (i = 0; i < tops.length; i++) {
+                if (tops[i] < prev + 14) tops[i] = prev + 14;
+                if (tops[i] < 0) tops[i] = 0;
+                prev = tops[i] + hs[i];
+              }
+              var over = prev - H;
+              if (over > 0.5) {
+                var sh = Math.min(over, tops[0]);
+                if (sh > 0) tops = tops.map(function (t) { return t - sh; });
+              }
+            } else {
+              var acc = 0;
+              for (i = 0; i < tops.length; i++) { tops[i] = acc; acc += hs[i] + 10; }
+            }
+            return { tops: tops, need: Math.ceil(tops[tops.length - 1] + hs[hs.length - 1] + 8) };
+          }
+          [].slice.call(d.querySelectorAll(".eboard")).forEach(function (bd) {
+            var isText = bd.classList.contains("text-board");
+            var sheet = bd.querySelector(isText ? ".tsheet" : ".esheet");
+            if (!sheet) return;
+            if (isText) sheet.style.height = "";
+            var H = sheet.offsetHeight;
+            if (!H) return;
+            var maxCol = H;
+            [].slice.call(bd.querySelectorAll(".ecol")).forEach(function (col) {
+              var cs = [].slice.call(col.querySelectorAll(".ecard"));
+              if (!cs.length) return;
+              cs.forEach(function (c) { c.style.transform = "none"; c.style.top = "0px"; });
+              var want = cs.map(function (c) {
+                if (isText) {
+                  var no = c.getAttribute("data-tno");
+                  var sent = no ? sheet.querySelector('.tsent[data-tno="' + no + '"]') : null;
+                  if (sent) return topIn(sent, sheet) + sent.offsetHeight / 2 - c.offsetHeight / 2;
+                  return H - c.offsetHeight - 6;
+                }
+                var p = parseFloat(c.getAttribute("data-top")) || 0;
+                return p / 100 * H - c.offsetHeight / 2;
+              });
+              var r = stack(cs, H, want);
+              cs.forEach(function (c, i) { c.style.transform = "none"; c.style.top = Math.round(r.tops[i]) + "px"; });
+              var ch = Math.max(H, r.need);
+              col.style.height = ch + "px";
+              col.style.minHeight = ch + "px";
+              if (ch > maxCol) maxCol = ch;
+            });
+            if (!isText) { sheet.style.minHeight = ""; sheet.style.height = H + "px"; }
+            bd.style.minHeight = Math.max(H, maxCol) + "px";
+          });
+        }
+        var t0 = Date.now();
+        (function wait() {
+          if (done) return;
+          var ready = doc && doc.documentElement.getAttribute("data-layout-done") === "1";
+          if (!ready && doc && doc.readyState === "complete") {
+            /* 内联脚本被 CSP 拦截时兜底：父页面直接排版 */
+            try { layoutIn(doc); ready = true; } catch (e2) { /* 继续等 */ }
+          }
+          if (ready || Date.now() - t0 > 8000) {
+            done = true;
+            toast("已按报告版式排好，打印对话框中选择「另存为 PDF」即可。");
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+            cleanup();
+          } else { setTimeout(wait, 100); }
+        })();
+      } catch (e) {
+        toast("PDF 导出失败：" + (e && e.message || e), "err");
+        cleanup();
+      }
+    };
+  }
   /* ---------------- 弹窗 ---------------- */
   var NL = String.fromCharCode(10);
 
@@ -2569,7 +2818,7 @@
           "<li>在「图片识别方式」选择 <b>视觉模型直读</b>。</li>" +
           "<li>选一个预设：通义千问 VL、智谱 GLM-4V、GPT-4o、Kimi 视觉版、硅基流动 Qwen2.5-VL。</li>" +
           "<li>填入该模型的接口 Key（与主批改 Key 相同则自动复用）。</li>" +
-          "<li>点「测试读图」：会用一张写着「智批作文」的小图验证模型是否真能看图，而不是只回文字。</li>" +
+          "<li>点「测试读图」：会用一张写着「笔墨生香」的小图验证模型是否真能看图，而不是只回文字。</li>" +
         "</ul>" +
         "<pre># 视觉请求示例（OpenAI 兼容协议）" + NL +
         '{' + NL + '  "model": "qwen-vl-max",' + NL + '  "messages": [{' + NL +

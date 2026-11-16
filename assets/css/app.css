@@ -421,6 +421,11 @@
   font-size:10.5px;line-height:1.68;color:var(--muted-2);margin:-2px 0 9px;
   padding-left:16px;letter-spacing:.02em;
 }
+/* 小练笔定位说明：通用能力训练，与本文情节无关 */
+.drill-note{
+  font-size:10.5px;line-height:1.68;color:var(--muted-2);margin:-2px 0 9px;
+  padding-left:16px;letter-spacing:.02em;
+}
 
 /* 具体问题与修改思路 */
 .issue{
@@ -492,6 +497,16 @@
   padding:6px 8px;font-size:10px;line-height:1.7;color:#6d6455;font-style:normal;
 }
 .material b{color:#4d4636;font-weight:600}
+/* 素材积累：逐条「标签徽章 + 范例短句」列表 */
+.drill-mat-list{margin:0;padding:0;list-style:none}
+.drill-mat-list li{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px}
+.drill-mat-list li:last-child{margin-bottom:0}
+.drill-mat-list .mat-tag{
+  flex:0 0 auto;font-size:9px;font-weight:650;color:#8a5a2b;
+  background:#f3ecdc;border:1px solid #e5d7ba;border-radius:4px;
+  padding:1px 6px;margin-top:2px;letter-spacing:.04em;white-space:nowrap;
+}
+.drill-mat-list li>span:last-child{flex:1;min-width:0}
 .drill-task{
   margin-top:7px;padding-top:6px;border-top:1px dashed var(--line-2);
   font-size:10.8px;color:var(--ink-2);letter-spacing:.02em;display:flex;justify-content:space-between;gap:8px;
@@ -561,6 +576,16 @@
 /* modal */
 .modal{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px}
 .modal[hidden]{display:none}
+/* 重复批改确认弹窗：窄卡 + 摘要 + 双按钮 */
+.confirm-card{width:min(420px,100%)}
+.confirm-text{font-size:12.5px;line-height:1.8;color:var(--ink-2);margin:0 0 8px}
+.confirm-note{font-size:10.5px;line-height:1.7;color:var(--muted-2);margin:0;padding:8px 10px;background:#faf7ef;border-left:2px solid #d9c9a6;border-radius:0 5px 5px 0}
+.confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.confirm-actions .btn-line{margin-top:0;padding:7px 18px}
+.confirm-actions .btn-line.primary{
+  background:linear-gradient(180deg,#b05a3d,#8a3a26);color:#fdf6ec;border-color:#8a3a26;font-weight:600;
+}
+.confirm-actions .btn-line.primary:hover{filter:brightness(1.08)}
 .modal-mask{position:absolute;inset:0;background:rgba(22,24,28,.42);backdrop-filter:blur(3px);animation:fadeIn .2s}
 .modal-card{
   position:relative;width:min(560px,100%);max-height:82vh;display:flex;flex-direction:column;
@@ -1109,13 +1134,26 @@
 /* 题材 Emoji */
 .chip{display:flex;align-items:center;justify-content:center;gap:5px}.chip-emoji{font-size:13px;filter:saturate(.82)}.chip.active .chip-emoji{filter:none}
 
+/* 体裁悬停浮层：批改要点小字（与年级 grade-fly 同款观感）。
+   fixed 定位由 JS 按按钮位置摆放，避免被侧栏 overflow 裁剪。 */
+.genre-fly{display:none;position:fixed;width:296px;padding:12px 14px;background:#fffdf9;border:1px solid #e3d9c7;border-radius:10px;box-shadow:0 20px 45px -22px rgba(20,22,26,.52);z-index:300;text-align:left;pointer-events:none}
+.genre-fly.show{display:block;animation:fadeUp .16s ease}
+.genre-fly header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.genre-fly strong{font-size:12px;color:var(--ink);white-space:nowrap}
+.genre-fly header i{font-style:normal;font-size:9px;color:#8a7043;background:#f3ecdc;border-radius:20px;padding:2px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.genre-fly ul{margin:0;padding:0;list-style:none}
+.genre-fly li{font-size:10.5px;color:#6e716f;line-height:1.65;padding-left:10px;position:relative;margin-bottom:2px}
+.genre-fly li::before{content:"";position:absolute;left:0;top:7px;width:3px;height:3px;border-radius:50%;background:#b89e70}
+.genre-fly p{margin-top:8px;padding-top:7px;border-top:1px dashed #e7dfd0;font-size:9.5px;line-height:1.55;color:#9a8e79}
+
 /* 上传下方稿源文本 */
 .inline-source{margin-top:12px;padding-top:11px;border-top:1px dashed var(--line)}.inline-source-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:10.5px;font-weight:600;color:var(--ink-3)}.inline-source-head em{font-size:8px;font-style:normal;font-weight:400;color:#aaa294;border:1px solid var(--line);border-radius:20px;padding:0 6px}
 
 /* 接口下拉 + 双 Tab */
 .cfg-accordion>.acc-head{padding:7px 8px}.cfg-tabs{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;margin-bottom:9px;background:#f0ece2;border-radius:7px}.cfg-tabs button{padding:6px 3px;border-radius:5px;font-size:10px;color:var(--muted)}.cfg-tabs button.active{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(25,28,33,.1)}.cfg-pane{display:none}.cfg-pane.active{display:block;animation:fadeUp .2s ease}.cfg-accordion .cfg-block{margin-top:0}
 
-/* 开屏动画：书页 + 墨点 */
+/* 开屏动画：终版图标（双页书+墨枝朱红梅）+ 名称浮现 */
+.splash-icon{width:96px;height:96px;border-radius:22px;filter:drop-shadow(0 12px 16px rgba(83,58,36,.18));animation:splashRise .85s cubic-bezier(.2,.9,.3,1)}
 .splash{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 42%,#fffdf7,#f1ede4 70%);transition:opacity .55s,visibility .55s}.splash.out{opacity:0;visibility:hidden}.splash-mark{position:relative;width:86px;height:68px;filter:drop-shadow(0 12px 16px rgba(83,58,36,.13));animation:splashRise .85s cubic-bezier(.2,.9,.3,1)}.book-page{position:absolute;bottom:5px;width:41px;height:49px;background:linear-gradient(145deg,#fffef9,#eee4cf);border:1.5px solid #8c6e48}.book-page.left{left:3px;border-radius:5px 1px 4px 8px;transform:skewY(7deg);transform-origin:right bottom}.book-page.right{right:3px;border-radius:1px 5px 8px 4px;transform:skewY(-7deg);transform-origin:left bottom}.book-page::after{content:"";position:absolute;left:9px;right:8px;top:14px;height:1px;background:#c2ae89;box-shadow:0 8px 0 #d4c5aa,0 16px 0 #dfd3bc}.ink-dot{position:absolute;left:38px;top:4px;width:11px;height:11px;border-radius:50% 55% 48% 60%;background:#a8412c;box-shadow:7px 9px 0 -4px #c0785f;animation:inkDrop .75s .4s both}.splash-name{font-family:var(--font-serif);font-size:25px;font-weight:700;letter-spacing:.22em;color:#2b2c2a;margin-top:13px;animation:fadeUp .7s .25s both}.splash-sub{font-size:9px;letter-spacing:.38em;color:#a18e70;margin-top:7px;animation:fadeUp .7s .45s both}@keyframes splashRise{from{opacity:0;transform:translateY(18px) scale(.9)}to{opacity:1;transform:none}}@keyframes inkDrop{from{opacity:0;transform:translateY(-14px) scale(.5)}to{opacity:1;transform:none}}
 
 /* 应用图标升级：书香红棕 */

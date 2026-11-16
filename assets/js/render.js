@@ -1,5 +1,5 @@
 /* ============================================================
-   智批作文 · 渲染模块
+   笔墨生香 · 渲染模块
    纸张骨架 / 正文与批注 / 引线定位 / 报告面板
    通过 ZP.Render.bind(state) 注入应用状态
    ============================================================ */
@@ -247,7 +247,17 @@
           }
         });
       } else {
-        splitParagraph(p, String(para), pi, anns, items);
+        /* 与导出模块共用同一套「句子↔批注」对齐逻辑（ZP.matchMarks），
+           保证屏幕上的高亮位置与导出报告完全一致 */
+        var built = buildMarked(p, String(para), pi, anns);
+        built.items.forEach(function (it) {
+          var idx = items.length;
+          items.push(it.item);
+          it.span.dataset.ann = idx;
+          it.dot.textContent = idx + 1;
+          bindSentence(it.span, idx);
+          bindDot(it.dot, idx);
+        });
       }
       body.appendChild(p);
     });
@@ -266,8 +276,10 @@
     return paper;
   }
 
-  /* 真实文本：把批注句子切出来；定位不到时按相似度兜底，绝不丢批注 */
-  function splitParagraph(p, text, pi, anns, items) {
+  /* 真实文本：把批注句子切出来；定位不到时按相似度兜底，绝不丢批注。
+     纯计算层：返回按位置排序的 marks（start/end/a），不碰 DOM。
+     导出模块（report-export.js）复用同一函数，保证高亮口径一致。 */
+  function matchMarks(text, pi, anns) {
     var mine = anns.filter(function (a) { return a.para === pi; });
     var marks = [];
 
@@ -326,51 +338,49 @@
     }
 
     marks.sort(function (x, y) { return x.start - y.start; });
+    return marks;
+  }
 
-    if (!marks.length) {
-      var s0 = document.createElement("span");
-      s0.className = "sent";
-      s0.textContent = text;
-      p.appendChild(s0);
-      return;
+  /* DOM 构建层：按 marks 把段落切成 span，返回带 span/dot 的条目，
+     由调用方决定编号、事件绑定（界面）或转成静态 HTML（导出）。 */
+  function buildMarked(p, text, pi, anns) {
+    var marks = matchMarks(text, pi, anns);
+    var out = [];
+
+    function plain(t) {
+      var s = document.createElement("span");
+      s.className = "sent";
+      s.textContent = t;
+      p.appendChild(s);
     }
+
+    if (!marks.length) { plain(text); return { marks: marks, items: out }; }
 
     var cursor = 0;
     marks.forEach(function (m) {
-      if (m.start > cursor) {
-        var pre = document.createElement("span");
-        pre.className = "sent";
-        pre.textContent = text.slice(cursor, m.start);
-        p.appendChild(pre);
-      }
+      if (m.start > cursor) plain(text.slice(cursor, m.start));
       var span = document.createElement("span");
       span.className = "sent a-" + m.a.type;
       span.textContent = text.slice(m.start, m.end);
       p.appendChild(span);
 
-      var idx = items.length;
-      items.push({
-        para: pi, type: m.a.type, tag: m.a.tag,
-        sentence: m.a.sentence || m.a.quote,
-        /* 正文：AI 新结果用 note，历史记录里存的是 html */
-        note: m.a.note || m.a.html || m.a.comment || "", fix: m.a.fix
-      });
-      span.dataset.ann = idx;
       var dot = document.createElement("span");
       dot.className = "dot-mark " + m.a.type;
-      dot.textContent = idx + 1;
       p.insertBefore(dot, span);
-      bindSentence(span, idx);
-      bindDot(dot, idx);
+      out.push({
+        span: span, dot: dot,
+        item: {
+          para: pi, type: m.a.type, tag: m.a.tag,
+          sentence: m.a.sentence || m.a.quote,
+          /* 正文：AI 新结果用 note，历史记录里存的是 html */
+          note: m.a.note || m.a.html || m.a.comment || "", fix: m.a.fix
+        }
+      });
       cursor = m.end;
     });
 
-    if (cursor < text.length) {
-      var tail = document.createElement("span");
-      tail.className = "sent";
-      tail.textContent = text.slice(cursor);
-      p.appendChild(tail);
-    }
+    if (cursor < text.length) plain(text.slice(cursor));
+    return { marks: marks, items: out };
   }
 
   /* 按中文标点切分句，保留偏移 */
@@ -1438,9 +1448,9 @@
           }).join("") +
         "</div>" +
       "</div>" +
-      /* 图片稿：批注已画在原稿两侧，报告里不再重复列一遍；
-         纯文本稿没有可视化批注区，仍保留列表便于逐句查看。 */
-      (r.source === "vision" ? "" : annSummary(r));
+      /* 批注已直接展示在作文两侧（画板批注卡 / 导出原稿页），
+         报告概览里不再重复输出「逐句批注」列表 */
+      "";
 
     $("#panelOverview").innerHTML = html;
 
@@ -1452,24 +1462,8 @@
     });
   }
 
-  function annSummary(r) {
-    var anns = r.annotations || [];
-    if (!anns.length) return "";
-    return '<div class="blk">' +
-      '<div class="blk-head"><h4>逐句批注</h4><i></i><span class="blk-meta">共 ' + anns.length + " 处 · 点击定位</span></div>" +
-      '<div class="ann-sum">' +
-        anns.map(function (a, i) {
-          return '<div class="ann-row" style="--c:' + (TYPE_COLOR[a.type] || "#7a5cc4") + '" data-ann="' + i + '">' +
-            '<span class="arc"><i></i></span>' +
-            '<span class="atx"><b>' + esc(TYPE_LABEL[a.type] || "批注") + "</b>" +
-              "<span>" + rich(annText(a)) + "</span>" +
-              (a.fix ? "<em>" + rich(a.fix) + "</em>" : "") +
-            "</span>" +
-          "</div>";
-        }).join("") +
-      "</div>" +
-    "</div>";
-  }
+  /* annSummary（逐句批注列表）已移除：批注统一在作文两侧展示，
+     概览页不再重复罗列。 */
 
   /* ---- Tab 2 ---- */
   function renderOutline(r) {
@@ -1547,6 +1541,26 @@
   }
 
   /* ---- Tab 3 ---- */
+  /* 素材积累：按「标签：句子」逐条展示；模型用换行分隔，旧数据可能是
+     一整段（<b>素材示例</b>：①…②…），按 ①②③ / 换行拆条兜底 */
+  function drillMaterials(text) {
+    var raw = String(text || "").trim();
+    if (!raw) return "";
+    /* 去旧格式前缀 */
+    raw = raw.replace(/<b>\s*素材示例\s*<\/b>\s*[:：]?/g, "")
+             .replace(/<b>\s*可用句式\s*<\/b>\s*[:：]?/g, "\n句式：");
+    var parts = raw.split(/\n+|(?=[①②③④⑤])/).map(function (s) {
+      return s.replace(/^[①②③④⑤]\s*/, "").trim();
+    }).filter(Boolean);
+    if (!parts.length) return "";
+    return '<ul class="drill-mat-list">' + parts.map(function (p) {
+      /* 「标签：句子」拆成徽章 + 正文；无标签就整句展示 */
+      var m = p.match(/^([^：:]{1,6})[：:]\s*([\s\S]+)$/);
+      if (m) return '<li><span class="mat-tag">' + esc(m[1]) + "</span><span>" + rich(m[2]) + "</span></li>";
+      return "<li><span>" + rich(p) + "</span></li>";
+    }).join("") + "</ul>";
+  }
+
   function renderDrills(r) {
     var ds = r.drills || [];
     if (!ds.length) {
@@ -1555,16 +1569,20 @@
     }
     $("#panelDrill").innerHTML =
       '<div class="blk">' +
-        '<div class="blk-head"><h4>针对性小练笔</h4><i></i><span class="blk-meta">3 题 · 按本文短板出题</span></div>' +
+        '<div class="blk-head"><h4>写作能力小练笔</h4><i></i><span class="blk-meta">3 题 · 通用能力训练</span></div>' +
+        '<div class="drill-note">按本篇暴露的能力短板出题，练笔场景与本文无关——练什么、怎么写、攒素材，课下即可动笔。</div>' +
         ds.map(function (d) {
+          /* 新旧字段兼容：skill/how 为新结构，problem/think 为旧报告 */
+          var skill = d.skill || d.problem || "";
+          var how = d.how || d.think || "";
           return '<div class="drill">' +
             '<div class="drill-top"><span class="drill-no">' + (d.no || 1) + "</span>" +
               "<h5>" + esc(d.title) + "</h5></div>" +
-            '<div class="drill-sec"><div class="lb s1">本文问题</div><p>' + rich(d.problem) + "</p></div>" +
-            '<div class="drill-sec"><div class="lb s2">写作思路</div><p>' + rich(d.think) + "</p></div>" +
-            '<div class="drill-sec"><div class="lb s3">素材 / 句式</div>' +
-              '<div class="material">' + rich(d.material) + "</div></div>" +
-            '<div class="drill-task"><span>本次任务</span><span>' + esc(d.task || "") + "</span></div>" +
+            (skill ? '<div class="drill-sec"><div class="lb s1">练什么</div><p>' + rich(skill) + "</p></div>" : "") +
+            (how ? '<div class="drill-sec"><div class="lb s2">怎么写</div><p>' + rich(how) + "</p></div>" : "") +
+            (d.material ? '<div class="drill-sec"><div class="lb s3">素材积累</div>' +
+              '<div class="material">' + drillMaterials(d.material) + "</div></div>" : "") +
+            '<div class="drill-task"><span>练笔任务</span><span>' + esc(d.task || "") + "</span></div>" +
           "</div>";
         }).join("") +
       "</div>";
@@ -1936,6 +1954,7 @@
 
   ZP.Render = {
     boardPos: boardPos,
+    matchMarks: matchMarks,
     typeColor: typeColor,
     exportBoardHtml: exportBoardHtml,
     fixBoardLayout: fixBoardLayout,

@@ -1,5 +1,5 @@
 /* ============================================================
-   智批作文 · 报告导出（所见即所得）
+   笔墨生香 · 报告导出（所见即所得）
    ------------------------------------------------------------
    设计目标：
    1) 白板与软件中间画板同一套三栏布局（左卡—原稿—右卡），不按 A4 硬塞
@@ -46,12 +46,16 @@
   /* 导出页的固定逻辑宽度：白板宽度 + 两侧安全边距 */
   var PAGE_W = L.boardW + L.padX * 2;
 
+  /* 打印缩放：A4（210mm）减去左右边距 10mm×2 后可印区约 190mm ≈ 718px，
+     报告逻辑宽 PAGE_W=1032px，等比缩放到页宽，版式与屏幕一致 */
+  var PRINT_SCALE = (718 / PAGE_W).toFixed(4);
+
   /* ---------------- 基础样式 ---------------- */
   function baseCss() {
     return ""
       + "*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}"
       + "body{margin:0;background:#f3f0e9;font-family:'PingFang SC','Microsoft YaHei',sans-serif;"
-      +   "color:#2b3038;font-size:13px;line-height:1.75}"
+      +   "color:#2b3038;font-size:16px;line-height:1.75}"
       /* 每页独立成块，打印时各自一页 */
       /* 不分页：所有内容放进同一张长文档，一次性连续展示 */
       + ".doc{width:" + PAGE_W + "px;margin:0 auto;background:#fffdf9;"
@@ -59,7 +63,7 @@
       +   "padding:" + L.padY + "px " + L.padX + "px}"
       /* 文档总标题 */
       + ".doc-head{margin:0 0 22px;text-align:center}"
-      + ".doc-head h1{margin:0;font-size:21px;font-weight:650;letter-spacing:.14em;color:#2b3038}"
+      + ".doc-head h1{margin:0;font-size:24px;font-weight:650;letter-spacing:.14em;color:#2b3038}"
       + ".doc-meta{margin-top:7px;font-size:11px;color:#a9a293;letter-spacing:.04em}"
       + ".sheet{width:100%;margin:0;padding:0;background:transparent;border:0}"
       /* 段落之间用分隔线隔开（原来靠分页区分） */
@@ -67,25 +71,40 @@
       /* 页眉 */
       + ".sheet-head{display:flex;align-items:flex-end;justify-content:space-between;"
       +   "gap:14px;padding-bottom:2px;margin-bottom:14px}"
-      + ".sheet-head h2{margin:0;font-size:15px;letter-spacing:.1em;color:#2b3038}"
+      + ".sheet-head h2{margin:0;font-size:17px;letter-spacing:.1em;color:#2b3038}"
       + ".sheet-head .sh-sub{font-size:10.5px;color:#a9a293;letter-spacing:.04em}"
       + ".sheet-head .sh-tag{font-size:10px;color:#8d8477;flex:0 0 auto}"
       /* ---- 打印 / 另存为 PDF ----
-         每张 sheet 独立成页；卡片、图表、表格避免被横切 */
+         每张 sheet 独立成页；卡片、图表、表格避免被横切。
+         注意：Chromium 打印管线会重置 CSS zoom，整体缩放交给
+         printToPDF 的 scale 参数（主进程）、浏览器打印交给
+         transform 方案（见 html.pdf-export 规则），这里不写 zoom。 */
       + "@page{size:A4;margin:12mm 10mm 14mm}"
       + "@media print{"
       +   "html,body{background:#fff !important}"
       +   "body{-webkit-print-color-adjust:exact;print-color-adjust:exact}"
-      +   ".doc{border:0;border-radius:0;width:auto;padding:0;box-shadow:none;background:#fff}"
+      +   ".doc{border:0;border-radius:0;width:auto;min-width:" + PAGE_W + "px;padding:0;box-shadow:none;background:#fff}"
       +   ".sheet{break-inside:auto;page-break-inside:auto}"
       /* 除最后一张外，每张报告分段另起一页 */
       +   ".sheet + .sheet{break-before:page;page-break-before:always;"
       +     "margin-top:0;padding-top:0;border-top:0}"
+      /* 原稿白板：左批注—图片/原文—右批注 三栏必须整体同页，
+         不允许图片单独成页、批注卡被拆到下一页 */
+      +   ".sheet-board{break-inside:avoid;page-break-inside:avoid}"
+      +   ".eboard,.ecol,.esheet,.ecard{break-inside:avoid;page-break-inside:avoid}"
       +   ".drill,.issue,.card,.pol,.hero,.tk-legend,.tech,.tip-card,img{"
       +     "break-inside:avoid;page-break-inside:avoid}"
       +   ".blk-head{break-after:avoid;page-break-after:avoid}"
       +   ".radar{max-width:200px}"
       +   "a{color:inherit;text-decoration:none}"
+      + "}"
+      /* ---- PDF 专用：原稿页整页适配 ----
+         适配由排版脚本 __zpPdfFit 直接写内联 transform:scale +
+         margin-bottom 补偿完成（Chromium 打印管线会重置 zoom、
+         @media print 规则在 printToPDF 路径下不稳定，内联最可靠）。
+         此处只保留超高页防拆规则。 */
+      + "@media print{"
+      +   "html.pdf-export .sheet-board{break-inside:avoid;page-break-inside:avoid}"
       + "}";
   }
 
@@ -150,12 +169,18 @@
           nx.toFixed(2) + '%">' + ((all.indexOf(a) >= 0 ? all.indexOf(a) : i) + 1) + "</div>";
     }).join("");
 
+    /* 尺寸用 CSS 变量驱动：屏幕 HTML 用默认值（与软件画板一致），
+       PDF 模式由排版脚本改写变量——加大图片列、收窄批注列，
+       让白板更高瘦以铺满 A4 高度（图片等比不裁切）。 */
     var css = ""
-      + ".eboard{position:relative;display:flex;align-items:flex-start;gap:" + L.gap + "px;"
-      +   "width:" + L.boardW + "px;min-width:" + L.boardW + "px;margin:0 auto;"
+      + ".eboard{--sw:" + L.sheetW + "px;--cw:" + L.cardW + "px;--gp:" + L.gap + "px;"
+      +   "position:relative;display:flex;align-items:flex-start;gap:var(--gp);"
+      +   "width:calc(var(--sw) + var(--cw)*2 + var(--gp)*2);"
+      +   "min-width:calc(var(--sw) + var(--cw)*2 + var(--gp)*2);margin:0 auto;"
       +   "min-height:" + sheetH + "px}"
-      + ".ecol{position:relative;flex:0 0 " + L.cardW + "px;width:" + L.cardW + "px;height:" + sheetH + "px}"
-      + ".esheet{position:relative;flex:0 0 " + L.sheetW + "px;width:" + L.sheetW + "px;height:" + sheetH + "px;"
+      + ".ecol{position:relative;flex:0 0 var(--cw);width:var(--cw);height:" + sheetH + "px}"
+      + ".esheet{position:relative;flex:0 0 var(--sw);width:var(--sw);"
+      +   "height:calc(var(--sw)*" + ratio.toFixed(4) + ");"
       +   "background:#fff;border:1px solid #e6e0d2;border-radius:2px;overflow:hidden;"
       +   "box-shadow:0 10px 28px -20px rgba(30,26,18,.5)}"
       + ".esheet img{display:block;width:100%;height:100%;object-fit:contain}"
@@ -174,16 +199,16 @@
       + ".ecard{position:absolute;left:0;width:100%;transform:translateY(-50%);"
       +   "background:#fff;border:1px solid #ece6d8;border-left-width:2px;border-radius:8px;"
       +   "padding:9px 11px 10px;box-shadow:0 8px 20px -16px rgba(30,26,18,.5);"
-      +   "font-size:11px;line-height:1.62}"
+      +   "font-size:var(--ecfs,13px);line-height:1.62}"
       + ".ecard-no{position:absolute;top:-6px;left:-6px;min-width:14px;height:14px;padding:0 3px;"
       +   "display:flex;align-items:center;justify-content:center;border-radius:7px;color:#fff;"
       +   "font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8px;font-weight:700;"
       +   "box-shadow:0 1px 3px rgba(20,22,26,.25)}"
-      + ".ecard-tag{font-size:9px;font-weight:600;letter-spacing:.04em;margin-bottom:3px}"
+      + ".ecard-tag{font-size:.82em;font-weight:600;letter-spacing:.04em;margin-bottom:3px}"
       + ".ecard-note{color:#3f4652}"
       + ".ecard-fix{margin-top:6px;padding:5px 7px;background:#faf7ef;border-left:2px solid #dcc9a5;"
-      +   "border-radius:0 4px 4px 0;font-size:10.5px;line-height:1.55;color:#6b6047}"
-      + ".ecard-fix i{display:block;font-style:normal;font-size:9px;color:#a89e8b;margin-bottom:2px}"
+      +   "border-radius:0 4px 4px 0;font-size:.95em;line-height:1.55;color:#6b6047}"
+      + ".ecard-fix i{display:block;font-style:normal;font-size:.8em;color:#a89e8b;margin-bottom:2px}"
       + ".ecard-fix.fix-short{background:#fdf3f1;border-left-color:#d98b78;color:#8f3a25}"
       + ".ecard-fix.fix-short i{color:#a2492f}";
 
@@ -207,6 +232,161 @@
   }
 
   /* ============================================================
+     一-B、稿源文本批注页（粘贴正文批改时使用）
+     ------------------------------------------------------------
+     此前导出只有「图片白板」一种原稿页：文本批改没有 images，
+     sheetPage 直接返回空串，导致导出报告缺失作文原文。
+     这里补一张与软件画板同构的三栏页：左卡—原文—右卡，
+     原文用荧光高亮 + 编号，句子↔批注的对齐复用界面同一套
+     ZP.Render.matchMarks，保证导出与屏幕高亮一致。
+     ============================================================ */
+  function textSheetPage(res, opt) {
+    opt = opt || {};
+    var anns = (res && (res.annotations || res.annos)) || [];
+    var paras = (res && (res.paragraphs || (res.essay && res.essay.paras))) || [];
+    /* 段落兜底：老历史可能没存 paragraphs，用稿源文本现切 */
+    if (!paras.length && opt.text) paras = ZP.splitParagraphs(opt.text);
+    paras = paras.map(function (p) {
+      if (Array.isArray(p)) return p.map(function (s) { return s.t || ""; }).join("");
+      return String(p);
+    }).filter(function (t) { return t.trim(); });
+    if (!paras.length) return "";
+
+    /* 逐段对齐：与界面 essay()/splitParagraph 相同的匹配规则 */
+    var items = [];           /* {a, no, paraIdx} 按界面编号顺序 */
+    var paraHtml = paras.map(function (text, pi) {
+      var marks = ZP.Render.matchMarks(text, pi, anns);
+      var html = "", cursor = 0;
+      marks.forEach(function (m) {
+        if (m.start > cursor) html += esc(text.slice(cursor, m.start));
+        var no = items.length + 1;
+        items.push({ a: m.a, no: no, paraIdx: pi });
+        var color = ZP.Render.typeColor(m.a.type);
+        html += '<span class="tno" style="background:' + color + '">' + no + "</span>" +
+          '<span class="tsent t-' + esc(m.a.type || "violet") + '" data-tno="' + no + '">' +
+          esc(text.slice(m.start, m.end)) + "</span>";
+        cursor = m.end;
+      });
+      if (cursor < text.length) html += esc(text.slice(cursor));
+      return "<p>" + html + "</p>";
+    }).join("");
+
+    /* 未能定位到具体句子的批注也绝不丢：归入「整篇批注」附在文末 */
+    var placed = items.map(function (it) { return it.a; });
+    var loose = anns.filter(function (a) { return placed.indexOf(a) < 0; });
+    loose.forEach(function (a) {
+      items.push({ a: a, no: items.length + 1, paraIdx: -1 });
+    });
+    var looseHtml = loose.length
+      ? '<div class="tloose"><span class="tloose-lb">整篇批注</span>' +
+        loose.map(function (a) {
+          var no = items.filter(function (it) { return it.a === a; })[0].no;
+          var color = ZP.Render.typeColor(a.type);
+          return '<p><span class="tno" style="background:' + color + '">' + no + "</span>" +
+            (a.sentence || a.quote ? '<q>' + esc(a.sentence || a.quote) + "</q> " : "") +
+            esc(a.note || a.html || a.comment || "") +
+            (a.fix ? "（" + esc(a.fix) + "）" : "") + "</p>";
+        }).join("") + "</div>"
+      : "";
+
+    /* 左右交替排卡，与图片白板一致；data-top 用「该句在原文中的地位」估算，
+       导出打开后由 report-fix.js 实测句子的 offsetTop 再精确对齐 */
+    var leftList = [], rightList = [];
+    items.forEach(function (it, i) {
+      (i % 2 === 0 ? leftList : rightList).push(it);
+    });
+
+    function tcard(it) {
+      var a = it.a;
+      var isRed = a.type === "red";
+      var fixTxt = String(a.fix || "").trim();
+      var color = ZP.Render.typeColor(a.type);
+      return '<div class="ecard tcard ' + (isRed ? "is-red" : "") + '"' +
+          ' data-tno="' + it.no + '"' +
+          ' style="border-left-color:' + color + '">' +
+          '<span class="ecard-no" style="background:' + color + '">' + it.no + "</span>" +
+          '<div class="ecard-tag" style="color:' + color + '">' + esc(a.tag || "") + "</div>" +
+          '<div class="ecard-note">' + esc(a.note || a.html || a.comment || "") + "</div>" +
+          (fixTxt ? '<div class="ecard-fix' + (isRed ? " fix-short" : "") + '"><i>' +
+            (isRed ? "正确写法" : "改写例句") + "</i>" + esc(fixTxt) + "</div>" : "") +
+        "</div>";
+    }
+
+    /* 文本板自带完整 .eboard 基础规则：此前只写了 .eboard.text-board 增量，
+       display:flex 等基础样式全依赖图片白板的 <style>；纯文本批改时
+       图片板不存在，白板退化成 block、三栏全部叠到左侧。这里补齐。 */
+    var css = ""
+      + ".eboard{position:relative;display:flex;align-items:flex-start;gap:" + L.gap + "px;"
+      +   "width:" + L.boardW + "px;min-width:" + L.boardW + "px;margin:0 auto}"
+      + ".ecard{position:absolute;left:0;width:100%;transform:translateY(-50%);"
+      +   "background:#fff;border:1px solid #ece6d8;border-left-width:2px;border-radius:8px;"
+      +   "padding:9px 11px 10px;box-shadow:0 8px 20px -16px rgba(30,26,18,.5);"
+      +   "font-size:var(--ecfs,13px);line-height:1.62}"
+      + ".ecard-no{position:absolute;top:-6px;left:-6px;min-width:14px;height:14px;padding:0 3px;"
+      +   "display:flex;align-items:center;justify-content:center;border-radius:7px;color:#fff;"
+      +   "font-family:ui-monospace,Menlo,Consolas,monospace;font-size:8px;font-weight:700;"
+      +   "box-shadow:0 1px 3px rgba(20,22,26,.25)}"
+      + ".ecard-tag{font-size:.82em;font-weight:600;letter-spacing:.04em;margin-bottom:3px}"
+      + ".ecard-note{color:#3f4652}"
+      + ".ecard-fix{margin-top:6px;padding:5px 7px;background:#faf7ef;border-left:2px solid #dcc9a5;"
+      +   "border-radius:0 4px 4px 0;font-size:.95em;line-height:1.55;color:#6b6047}"
+      + ".ecard-fix i{display:block;font-style:normal;font-size:.8em;color:#a89e8b;margin-bottom:2px}"
+      + ".ecard-fix.fix-short{background:#fdf3f1;border-left-color:#d98b78;color:#8f3a25}"
+      + ".ecard-fix.fix-short i{color:#a2492f}"
+      + ".eboard.text-board{align-items:stretch}"
+      + ".tcol{position:relative;flex:0 0 " + L.cardW + "px;width:" + L.cardW + "px}"
+      + ".tsheet{position:relative;flex:0 0 " + L.sheetW + "px;width:" + L.sheetW + "px;"
+      +   "background:#fff;border:1px solid #e6e0d2;border-radius:2px;"
+      +   "padding:26px 30px 30px;box-shadow:0 10px 28px -20px rgba(30,26,18,.5)}"
+      + ".tsheet .t-title{text-align:center;margin:0 0 4px;font-size:17px;font-weight:700;"
+      +   "font-family:'Songti SC',SimSun,serif;letter-spacing:.06em;color:#20232a}"
+      + ".tsheet .t-meta{text-align:center;font-size:10px;color:#948b7c;letter-spacing:.08em;"
+      +   "margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #f0e9db}"
+      + ".tsheet .t-body{font-family:'Songti SC',SimSun,serif;font-size:16.5px;line-height:2.05;"
+      +   "color:#26292f;text-align:justify}"
+      + ".tsheet .t-body p{margin:0 0 .35em;text-indent:2em}"
+      + ".tsheet .t-body p:last-child{margin-bottom:0}"
+      /* 荧光高亮：与界面 .sent.a-* 同一套颜色 */
+      + ".tsent{border-radius:2px;padding:0 1px}"
+      + ".tsent.t-red{background:linear-gradient(180deg,transparent 64%,rgba(207,68,54,.15) 64%)}"
+      + ".tsent.t-amber{background:linear-gradient(180deg,transparent 64%,rgba(209,149,42,.19) 64%)}"
+      + ".tsent.t-green{background:linear-gradient(180deg,transparent 64%,rgba(47,143,107,.16) 64%)}"
+      + ".tsent.t-violet{background:linear-gradient(180deg,transparent 64%,rgba(122,92,196,.16) 64%)}"
+      + ".tno{display:inline-block;width:13px;height:13px;line-height:13px;text-align:center;"
+      +   "border-radius:50%;font-size:8px;font-weight:700;color:#fff;margin:0 2px;"
+      +   "vertical-align:2px;font-family:ui-monospace,Menlo,Consolas,monospace;"
+      +   "box-shadow:0 1px 2px rgba(0,0,0,.18);text-indent:0}"
+      + ".tcard{position:absolute;left:0;width:100%}"
+      + ".tloose{margin-top:14px;padding-top:10px;border-top:1px dashed #e6dfd0}"
+      + ".tloose-lb{display:inline-block;font-size:10px;letter-spacing:.1em;font-weight:600;"
+      +   "color:#9a7c46;margin-bottom:4px}"
+      + ".tloose p{margin:0 0 5px;font-size:13px;line-height:1.7;color:#5d6470;text-indent:0}"
+      + ".tloose q{color:#8a7a5c;quotes:'「' '」'}";
+
+    return '<section class="sheet sheet-board">' +
+      '<div class="sheet-head">' +
+        '<div><h2>原稿批注</h2>' +
+          '<div class="sh-sub">' + esc(res.title || "作文") +
+          (res.meta ? "　" + esc(res.meta) : "") + "　稿源文本</div></div>" +
+      "</div>" +
+      '<style>' + css + "</style>" +
+      '<div class="eboard text-board">' +
+        '<div class="ecol tcol ecol-l">' + leftList.map(tcard).join("") + "</div>" +
+        '<div class="esheet tsheet">' +
+          '<h3 class="t-title">' + esc(res.title || "作文") + "</h3>" +
+          '<div class="t-meta">' + [
+            (res.student && res.student !== "未署名") ? esc(res.student) : "",
+            esc(res.meta || ""),
+            "全文 " + (res.wordCount || 0) + " 字"
+          ].filter(Boolean).join(" · ") + "</div>" +
+          '<div class="t-body">' + paraHtml + "</div>" + looseHtml +
+        "</div>" +
+        '<div class="ecol tcol ecol-r">' + rightList.map(tcard).join("") + "</div>" +
+      "</div>" +
+    "</section>";
+  }
+
+  /* ============================================================
      二、报告各 Tab（每个 Tab 独立一页）
      ============================================================ */
   function tabCss() {
@@ -214,7 +394,7 @@
       + ".blk{margin-bottom:18px}"
       + ".blk:last-child{margin-bottom:0}"
       + ".blk-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}"
-      + ".blk-head h4{margin:0;font-size:11.5px;font-weight:650;letter-spacing:.1em;color:#3f3b35}"
+      + ".blk-head h4{margin:0;font-size:14px;font-weight:650;letter-spacing:.1em;color:#3f3b35}"
       + ".blk-head i{flex:1;height:1px;background:linear-gradient(90deg,#e0d8c8,transparent)}"
       + ".blk-head .meta{font-size:10.5px;color:#8d8477;letter-spacing:.03em}"
       + ".card{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:12px 14px;"
@@ -226,38 +406,38 @@
       +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       + ".hero-l{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start}"
       + ".hero-r{flex:0 0 210px;display:flex;align-items:center;justify-content:center}"
-      + ".stu{font-size:13px;font-weight:600;color:#2b3038;margin-bottom:8px}"
+      + ".stu{font-size:15px;font-weight:600;color:#2b3038;margin-bottom:8px}"
       + ".stu em{font-style:normal;font-weight:400;font-size:11px;color:#8d8477;margin-left:8px}"
       + ".hero .big{font-size:38px;font-weight:650;line-height:1;letter-spacing:-.02em;color:#2b3038}"
       + ".hero .big small{font-size:12px;color:#8d8477;font-weight:400;margin-left:2px}"
       + ".cap{font-size:9.5px;color:#a89e8b;letter-spacing:.08em;margin-top:6px}"
-      + ".hero-r .hd{display:block;font-size:11.5px;color:#5d6470;line-height:1.9}"
+      + ".hero-r .hd{display:block;font-size:14px;color:#5d6470;line-height:1.9}"
       + ".hero-r .hd i{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:6px;vertical-align:1px}"
       + ".hero-r .hd b{float:right;font-size:12px;color:#2b3038;margin-left:12px}"
       + ".big{font-size:40px;font-weight:650;line-height:1;letter-spacing:-.02em;color:#2b3038}"
       + ".big small{font-size:12px;color:#8d8477;font-weight:400;margin-left:2px}"
-      + ".lv{padding:3px 11px;border-radius:5px;font-size:11.5px;font-weight:600;"
+      + ".lv{padding:3px 11px;border-radius:5px;font-size:13px;font-weight:600;"
       +   "background:linear-gradient(180deg,#f9f0dd,#f1e2c4);color:#75501c;border:1px solid #d9c39b}"
       + ".lv.l1{background:linear-gradient(180deg,#faeae1,#f2d8c8);color:#7d321c;border-color:#dcb8a0}"
       + ".lv.l2{background:linear-gradient(180deg,#eaf0e2,#d9e4cd);color:#3d4f35;border-color:#bccdab}"
       + ".lv.l3{background:linear-gradient(180deg,#f4f2ee,#e9e5dc);color:#5f574c;border-color:#d4cdbd}"
-      + ".mini{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:10.5px;color:#6f6a60}"
+      + ".mini{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12px;color:#6f6a60}"
       + ".mini span{display:inline-flex;align-items:center}"
       + ".mini i{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:5px;"
       +   "box-shadow:0 0 0 1px rgba(255,255,255,.85) inset}"
       + ".radar{display:block;width:100%;max-width:200px;height:auto}"
       /* 总评 */
-      + ".overall{white-space:pre-wrap;font-size:12.5px;line-height:1.95;color:#454b55}"
+      + ".overall{white-space:pre-wrap;font-size:15px;line-height:1.95;color:#454b55}"
       /* 四维卡片 */
       + ".dim{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:10px 12px;"
       +   "margin-bottom:8px;border-left:3px solid var(--c);box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       + ".dim:last-child{margin-bottom:0}"
       + ".dh{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}"
-      + ".dh .nm{font-size:11.5px;font-weight:600;color:var(--c);letter-spacing:.03em}"
+      + ".dh .nm{font-size:13.5px;font-weight:600;color:var(--c);letter-spacing:.03em}"
       + ".dh b{margin-left:auto;font-size:12px;font-weight:650;color:var(--c)}"
       + ".dh b em{font-style:normal;font-size:9.5px;color:#a89e8b;font-weight:400}"
       + ".dh .w{color:#8d8477;font-size:10px}"
-      + ".dim p{margin:0;font-size:11.5px;color:#5d6470;line-height:1.7}"
+      + ".dim p{margin:0;font-size:14px;color:#5d6470;line-height:1.7}"
       + ".dim .tagline{display:inline-block;margin-top:6px;font-size:9.5px;font-weight:600;"
       +   "color:var(--c);background:#fbf9f4;border:1px solid #dfd7c6;"
       +   "padding:2px 7px;border-radius:4px;letter-spacing:.03em}"
@@ -269,23 +449,23 @@
       + ".drill-no{width:19px;height:19px;border-radius:5px;display:flex;align-items:center;"
       +   "justify-content:center;flex:0 0 19px;font-size:10px;font-weight:600;color:#8a6c34;"
       +   "background:linear-gradient(180deg,#fbf3e0,#f6e9ce);border:1px solid #ecdcbc}"
-      + ".drill-head h5{margin:0;font-size:11px;font-weight:650;color:#2e323a;flex:1;line-height:1.4}"
+      + ".drill-head h5{margin:0;font-size:13.5px;font-weight:650;color:#2e323a;flex:1;line-height:1.4}"
       + ".drill-sec{margin-top:6px}"
-      + ".drill-lb{display:inline-block;font-size:10px;letter-spacing:.1em;font-weight:600;margin-bottom:2px}"
+      + ".drill-lb{display:inline-block;font-size:12px;letter-spacing:.1em;font-weight:600;margin-bottom:2px}"
       + ".drill-lb.s1{color:#b0552c}"
       + ".drill-lb.s2{color:#3b6ea5}"
       + ".drill-lb.s3{color:#2f7f6a}"
-      + ".drill-sec p{margin:0;font-size:10.4px;line-height:1.72;color:#5d6470}"
+      + ".drill-sec p{margin:0;font-size:13px;line-height:1.72;color:#5d6470}"
       + ".drill-task{margin-top:7px;padding-top:6px;border-top:1px dashed #e6dfd0;"
-      +   "font-size:10.8px;color:#8a7a5c;display:flex;justify-content:space-between;gap:8px}"
+      +   "font-size:13px;color:#8a7a5c;display:flex;justify-content:space-between;gap:8px}"
       + ".drill-task span:first-child{color:#b0a390}"
       /* 通用段落（写作思路等仍用） */
       + ".drill h5{margin:0 0 6px;font-size:12px;color:#2b3038}"
-      + ".drill p{margin:0 0 4px;font-size:11.5px;color:#5d6470;line-height:1.75}"
+      + ".drill p{margin:0 0 4px;font-size:14px;color:#5d6470;line-height:1.75}"
       + ".drill p:last-child{margin-bottom:0}"
       + ".drill p b{color:#3f3b35;font-weight:600}"
       + ".drill ol{margin:0 0 4px;padding-left:18px}"
-      + ".drill ol li{font-size:11.5px;color:#5d6470;line-height:1.75;margin-bottom:2px}"
+      + ".drill ol li{font-size:14px;color:#5d6470;line-height:1.75;margin-bottom:2px}"
       + ".drill ol li:last-child{margin-bottom:0}"
       /* 写作思路：与界面同色系，标题/标签/正文分主次 */
       + ".ol-note{font-size:10.5px;line-height:1.65;color:#9aa1ad;margin:-2px 0 10px;letter-spacing:.02em}"
@@ -294,11 +474,11 @@
       + ".ol-step:last-child{margin-bottom:0}"
       + ".ol-step::before{content:'';position:absolute;left:-20px;top:5px;width:7px;height:7px;border-radius:50%;"
       +   "background:#fff;border:1.5px solid #c8ae82}"
-      + ".ol-tag{font-size:11px;font-weight:650;letter-spacing:.1em;color:#9a7c46;margin-bottom:4px}"
-      + ".ol-step p{font-size:11.2px;color:#4c535e;line-height:1.78;margin:0}"
+      + ".ol-tag{font-size:13px;font-weight:650;letter-spacing:.1em;color:#9a7c46;margin-bottom:4px}"
+      + ".ol-step p{font-size:13.5px;color:#4c535e;line-height:1.78;margin:0}"
       + ".ol-step p b{color:#2b3038;font-weight:600}"
       + ".ol-list{margin:2px 0 0;padding:0;list-style:none;counter-reset:oli}"
-      + ".ol-list li{position:relative;padding-left:16px;font-size:11.2px;line-height:1.78;color:#4c535e;"
+      + ".ol-list li{position:relative;padding-left:16px;font-size:13.5px;line-height:1.78;color:#4c535e;"
       +   "margin-bottom:3px;counter-increment:oli}"
       + ".ol-list li:last-child{margin-bottom:0}"
       + ".ol-list li::before{content:counter(oli) '.';position:absolute;left:0;top:0;font-size:10.5px;"
@@ -312,21 +492,21 @@
       + ".issue-no{width:18px;height:18px;border-radius:5px;display:flex;align-items:center;justify-content:center;"
       +   "flex:0 0 18px;margin-top:1px;font-size:10px;font-weight:600;color:#a8523a;"
       +   "background:linear-gradient(180deg,#fdf0ec,#f9e4dd);border:1px solid #f0d3c9}"
-      + ".issue-problem{margin:0;font-size:11.2px;line-height:1.72;color:#2b3038;font-weight:600}"
+      + ".issue-problem{margin:0;font-size:13.5px;line-height:1.72;color:#2b3038;font-weight:600}"
       + ".ia-lb{display:inline-block;font-size:10px;letter-spacing:.1em;font-weight:600;color:#9a7c46;"
       +   "background:#fbf7ec;border:1px solid #ece1c9;border-radius:4px;padding:1px 5px;margin-bottom:4px}"
       + ".issue-advice{margin-top:6px}"
-      + ".issue-advice p{margin:0;font-size:11px;line-height:1.75;color:#4c535e}"
+      + ".issue-advice p{margin:0;font-size:13.5px;line-height:1.75;color:#4c535e}"
       + ".issue-steps{margin-top:7px;padding-top:7px;border-top:1px dashed #e6dfd0}"
       + ".fix-steps{margin:0;padding:0;list-style:none;counter-reset:fst}"
-      + ".fix-steps li{position:relative;padding-left:17px;font-size:11px;line-height:1.75;color:#6d6455;"
+      + ".fix-steps li{position:relative;padding-left:17px;font-size:13.5px;line-height:1.75;color:#6d6455;"
       +   "margin-bottom:3px;counter-increment:fst}"
       + ".fix-steps li:last-child{margin-bottom:0}"
       + ".fix-steps li::before{content:counter(fst);position:absolute;left:0;top:2px;width:12px;height:12px;"
       +   "border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8.5px;"
       +   "font-weight:600;color:#a08a63;background:#f7f2e6;border:1px solid #e9dfc9}"
       + ".tech ul{margin:0;padding-left:16px}"
-      + ".tech li{font-size:11.5px;color:#5d6470;line-height:1.8;margin-bottom:4px}"
+      + ".tech li{font-size:14px;color:#5d6470;line-height:1.8;margin-bottom:4px}"
       + ".tech li::marker{color:#c9a05c}"
       + ".tech li:last-child{margin-bottom:0}"
       + ".tech li b{display:inline-block;font-size:10px;font-weight:600;border:1px solid currentColor;"
@@ -337,12 +517,12 @@
       +   "background:#faf8f2;border:1px dashed #e6ddc9;border-radius:7px}"
       + ".tk-legend span{display:inline-flex;align-items:center;gap:5px;font-size:10.2px;color:#9aa1ad}"
       + ".tk-legend i{width:5px;height:5px;border-radius:50%}"
-      + ".drill .mat{background:#f8f6ef;border-left:2px solid #d9c9a6;padding:6px 8px;"
-      +   "border-radius:0 5px 5px 0;color:#6d6455}"
+      + ".drill .mat{background:#f8f6ef;border-left:2px solid #d9c9a6;padding:7px 9px;"
+      +   "border-radius:0 5px 5px 0;color:#6d6455;font-size:14px;line-height:1.7}"
       + ".drill .mat b{color:#4d4636;font-weight:600}"
       /* 润色稿 */
       + ".pol{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:18px 22px;"
-      +   "font-family:'Songti SC',SimSun,serif;font-size:13.5px;line-height:2.05;color:#2b3038;"
+      +   "font-family:'Songti SC',SimSun,serif;font-size:16.5px;line-height:2.05;color:#2b3038;"
       +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
       + ".pol h6{text-align:center;font-size:15px;margin:0 0 12px;font-weight:700;letter-spacing:.04em}"
       + ".pol p{margin:0 0 7px;text-indent:2em}"
@@ -502,28 +682,58 @@
     "</section>";
   }
 
-  /* 小练笔页 */
+  /* 小练笔页：通用写作能力训练（练什么/怎么写/素材积累/练笔任务） */
+  /* 素材拆条：与界面 render.js drillMaterials 同一套规则 */
+  function drillMatHtml(text) {
+    var raw = String(text || "").trim();
+    if (!raw) return "";
+    raw = raw.replace(/<b>\s*素材示例\s*<\/b>\s*[:：]?/g, "")
+             .replace(/<b>\s*可用句式\s*<\/b>\s*[:：]?/g, "\n句式：");
+    var parts = raw.split(/\n+|(?=[①②③④⑤])/).map(function (s) {
+      return s.replace(/^[①②③④⑤]\s*/, "").trim();
+    }).filter(Boolean);
+    if (!parts.length) return "";
+    return '<ul class="mat-list">' + parts.map(function (p) {
+      var m = p.match(/^([^：:]{1,6})[：:]\s*([\s\S]+)$/);
+      if (m) return '<li><span class="mat-tag">' + esc(m[1]) + "</span><span>" + esc(m[2]) + "</span></li>";
+      return "<li><span>" + esc(p) + "</span></li>";
+    }).join("") + "</ul>";
+  }
+
   function drillPage(res) {
     var list = res.drills || [];
     var html = list.length
       ? list.map(function (d, i) {
+        /* 新旧字段兼容：skill/how 为新结构，problem/think 为旧报告 */
+        var skill = d.skill || d.problem || "";
+        var how = d.how || d.think || "";
         return '<div class="drill">' +
           '<div class="drill-head"><span class="drill-no">' + (d.no || i + 1) + "</span>" +
             "<h5>" + esc(d.title || "练习 " + (i + 1)) + "</h5></div>" +
-          (d.problem ? '<div class="drill-sec"><span class="drill-lb s1">本文问题</span>' +
-            "<p>" + esc(d.problem) + "</p></div>" : "") +
-          (d.think ? '<div class="drill-sec"><span class="drill-lb s2">写作思路</span>' +
-            "<p>" + esc(d.think) + "</p></div>" : "") +
-          (d.material ? '<div class="drill-sec"><span class="drill-lb s3">素材 / 句式</span>' +
-            '<div class="mat">' + d.material + "</div></div>" : "") +
-          (d.task ? '<div class="drill-task"><span>本次任务</span><span>' + esc(d.task) + "</span></div>" : "") +
+          (skill ? '<div class="drill-sec"><span class="drill-lb s1">练什么</span>' +
+            "<p>" + esc(skill) + "</p></div>" : "") +
+          (how ? '<div class="drill-sec"><span class="drill-lb s2">怎么写</span>' +
+            "<p>" + esc(how) + "</p></div>" : "") +
+          (d.material ? '<div class="drill-sec"><span class="drill-lb s3">素材积累</span>' +
+            '<div class="mat">' + drillMatHtml(d.material) + "</div></div>" : "") +
+          (d.task ? '<div class="drill-task"><span>练笔任务</span><span>' + esc(d.task) + "</span></div>" : "") +
         "</div>";
       }).join("")
       : '<div class="card">本次未生成小练笔。</div>';
+    var matCss = ""
+      + ".mat-list{margin:0;padding:0;list-style:none}"
+      + ".mat-list li{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px}"
+      + ".mat-list li:last-child{margin-bottom:0}"
+      + ".mat-list .mat-tag{flex:0 0 auto;font-size:11.5px;font-weight:650;color:#8a5a2b;"
+      +   "background:#f3ecdc;border:1px solid #e5d7ba;border-radius:4px;"
+      +   "padding:1px 6px;margin-top:2px;letter-spacing:.04em;white-space:nowrap}"
+      + ".mat-list li>span:last-child{flex:1;min-width:0}";
     return '<section class="sheet">' +
-      head("小练笔", esc(res.title || "") + "　共 " + list.length + " 题") +
-      '<style>' + tabCss() + "</style>" +
-      '<div class="blk"><div class="blk-head"><h4>针对本文短板的三道练习</h4><i></i></div>' +
+      head("写作能力小练笔", esc(res.title || "") + "　共 " + list.length + " 题") +
+      '<style>' + tabCss() + matCss + "</style>" +
+      '<div class="blk"><div class="blk-head"><h4>通用写作能力训练</h4><i></i>' +
+        '<span class="meta">按本篇短板出题 · 场景与本文无关</span></div>' +
+        '<div class="ol-note">针对本篇暴露的能力短板设计，练笔场景与本文无关——练什么、怎么写、攒素材，课下即可动笔。</div>' +
         html + "</div>" +
     "</section>";
   }
@@ -616,7 +826,12 @@
       xhr.open("GET", "assets/js/report-fix.js", false);   /* 同步：build 是同步接口 */
       xhr.send(null);
       if (xhr.status === 200 || (xhr.status === 0 && xhr.responseText)) {
-        FIX_SCRIPT_SRC = xhr.responseText;
+        /* XHR 会把 CRLF 归一成 LF：磁盘文件是 CRLF 时，responseText
+           与原始字节不同。若按 responseText 算 CSP 哈希、又原样内联，
+           某些加载路径（file:// 直读）按原始字节校验就会哈希不匹配、
+           整段脚本被拦。这里统一归一成 LF，保证「内联内容 = 哈希输入」
+           在任何加载方式下都一致。 */
+        FIX_SCRIPT_SRC = String(xhr.responseText).replace(/\r\n?/g, "\n");
         return FIX_SCRIPT_SRC;
       }
     } catch (e) {
@@ -759,6 +974,11 @@
         var one = sheetPage(res, { images: images, page: i, total: images.length });
         if (one) parts.push(one);
       }
+    } else {
+      /* 稿源文本批改（或图片缺失）：导出文本原稿批注页，
+         保证作文原文永远出现在报告里，不再整页缺失 */
+      var tPage = textSheetPage(res, { text: opt.text || "" });
+      if (tPage) parts.push(tPage);
     }
 
     /* 报告四页：概览 / 思路 / 练笔 / 润色 */
@@ -775,7 +995,7 @@
       "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; " +
         "img-src 'self' data: blob:; style-src 'unsafe-inline'; " +
         "script-src " + scriptCspTokens() + "; font-src data:\">" +
-      "<title>" + esc(res.title || "作文") + " · 智批作文报告</title>" +
+      "<title>" + esc(res.title || "作文") + " · 笔墨生香报告</title>" +
       "<style>" + baseCss() + "</style></head><body>" +
       /* 全部内容放进一个 .doc 容器，连续展示，不分页 */
       '<div class="doc">' +
@@ -800,6 +1020,7 @@
     build: build,
     PAGE_W: PAGE_W,
     sheetPage: sheetPage,
+    textSheetPage: textSheetPage,
     overviewPage: overviewPage,
     outlinePage: outlinePage,
     drillPage: drillPage,

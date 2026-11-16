@@ -1,10 +1,10 @@
 {
   "name": "zhipi-zuowen",
-  "productName": "智批作文",
-  "version": "1.4.3",
-  "description": "智批作文 · AI 作文批改工作台（网页版 + Electron 桌面版）",
+  "productName": "笔墨生香",
+  "version": "1.5.0",
+  "description": "笔墨生香 · AI 作文批改工作台（网页版 + Electron 桌面版）",
   "main": "main.js",
-  "author": "智批作文",
+  "author": "笔墨生香",
   "license": "MIT",
   "private": true,
   "scripts": {
@@ -17,8 +17,8 @@
   },
   "build": {
     "appId": "com.zhipi.zuowen",
-    "productName": "智批作文",
-    "copyright": "Copyright © 2026 智批作文",
+    "productName": "笔墨生香",
+    "copyright": "Copyright © 2026 笔墨生香",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -39,7 +39,7 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "智批作文-${version}-安装包.${ext}",
+      "artifactName": "笔墨生香-${version}-安装包.${ext}",
       "signAndEditExecutable": false,
       "sign": null
     },
@@ -50,7 +50,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "智批作文",
+      "shortcutName": "笔墨生香",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
@@ -62,7 +62,7 @@
         "zh_CN"
       ]
     },
-    "artifactName": "智批作文-${version}-安装包.${ext}"
+    "artifactName": "笔墨生香-${version}-安装包.${ext}"
   },
   "repository": {
     "type": "git",
