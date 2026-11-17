@@ -41,5 +41,20 @@ const args = [exe,
   "--set-version-string", "InternalName", productName,
   "--set-version-string", "CompanyName", productName
 ];
-execFileSync(rcedit, args, { stdio: "inherit" });
+/* execFileSync 带重试：electron-builder 刚写完 exe 时文件锁/杀毒扫描
+可能短暂占用，rcedit 会报 "Unable to commit changes"，等 2 秒重试即可。 */
+let lastErr = null;
+for (let attempt = 1; attempt <= 5; attempt++) {
+  try {
+    execFileSync(rcedit, args, { stdio: "inherit" });
+    lastErr = null;
+    break;
+  } catch (e) {
+    lastErr = e;
+    console.log("brand-exe: rcedit attempt " + attempt + " failed, retrying in 2s...");
+    const wait = (ms) => { const t = Date.now() + ms; while (Date.now() < t) {} };
+    wait(2000);
+  }
+}
+if (lastErr) throw lastErr;
 console.log("brand-exe: icon + version info written to", path.basename(exe));
