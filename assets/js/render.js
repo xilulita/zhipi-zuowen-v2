@@ -564,21 +564,29 @@
     if (!layer || !sp.h) return;
     layer.innerHTML = "";
 
-    /* 模型给了 box：按真实位置画线，编号贴在线的起止端；
-       没给 box：退回按段落估算，保证仍能用 */
-    var totalPara = Math.max(4, (anns.reduce(function (m, a) {
-      return Math.max(m, (a.para | 0) + 1);
-    }, 0)));
+    /* 坐标聚集兜底：模型偶尔把所有 box 估到同一角落（挤成一团、线极短）。
+       检测到本页批注纵向分布 <15% 且横向中心 <20% 时，整组忽略 box，
+       退回按序号均分——保证线分开、够长、可拖。历史旧数据同样受保护。 */
+    var boxed = anns.filter(function (a) { return a.box; });
+    var clustered = false;
+    if (boxed.length >= 3) {
+      var ys = boxed.map(function (a) { return a.box.y; });
+      var xs = boxed.map(function (a) { return (a.box.x1 + a.box.x2) / 2; });
+      var spread = function (arr) { return Math.max.apply(null, arr) - Math.min.apply(null, arr); };
+      clustered = spread(ys) < 15 && spread(xs) < 20;
+    }
 
     anns.forEach(function (a, i) {
-      var box = a.box;
+      var box = clustered ? null : a.box;
       var fbY, fbX1, fbX2;
       if (box) {
         fbY = box.y; fbX1 = box.x1; fbX2 = box.x2;
       } else {
-        /* 模型没给位置：按段落把图纵向等分，线只画半幅，
-           数字贴着线的端点走，也不会再跑到图片边框上 */
-        fbY = Math.min(94, (((a.para | 0) + 0.5) / totalPara) * 100);
+        /* 模型没给位置（或坐标聚集被整组作废）：按本页批注序号纵向均分，
+           线画整幅宽——保证每条线分开、够长、可拖动。
+           旧逻辑按 para 估算，图片稿 para 全是 0 时所有线挤在同一行。 */
+        var n = Math.max(1, anns.length);
+        fbY = Math.min(94, Math.max(5, ((i + 0.5) / n) * 88 + 5));
         fbX1 = 4; fbX2 = 96;
       }
       /* 应用人工微调：位置与起止点都以调整后的为准 */
@@ -771,7 +779,7 @@
       bar.className = "adjust-bar";
       var anyAdj = annList(result).some(hasAdj);
       bar.innerHTML =
-        '<span class="ab-hint"><i></i>划线可整条拖动，两端小圆点改长短；编号与左侧卡片也能拖</span>' +
+        '<span class="ab-hint"><i></i>拖线身整条移动，拖两端圆点改长短；编号与批注卡也能拖</span>' +
         '<button type="button" id="adjReset"' + (anyAdj ? '' : ' hidden') + '>还原位置</button>';
       col.appendChild(bar);
     }
@@ -1117,11 +1125,10 @@
 
   /* 事件挂载点：由 paintHighlights / layoutImageAnnotations 调用 */
   ZP.onBandMounted = function (band, gid) {
-    /* 指针进入时按住 Alt：临时放开端点把手，进入「改长短」模式 */
+    /* 悬停即显示端点把手（可直接拖改长短）；Alt 不再是必需 */
     band.addEventListener("pointermove", function (e) {
-      var g = e.altKey;
-      if (band.classList.contains("grip-mode") !== g) band.classList.toggle("grip-mode", g);
-      band.style.cursor = g ? "ew-resize" : "grab";
+      var onGrip = e.target && e.target.classList && e.target.classList.contains("hl-grip");
+      band.style.cursor = onGrip ? "ew-resize" : "grab";
     });
     band.addEventListener("pointerleave", function () {
       band.classList.remove("grip-mode");
@@ -1129,28 +1136,16 @@
     });
 
     band.addEventListener("pointerdown", function (e) {
-      /* 端点把手只响应 Alt+拖动：其余情况一律走「整条平移」，
-         避免想移动时点到圆点、结果只把线拉长，看起来像没反应 */
+      /* 点在端点圆点上：直接改长短；点在线身：整条平移 */
       var onGrip = e.target && e.target.classList && e.target.classList.contains("hl-grip");
-      if (onGrip && !e.altKey) {
-        e.stopPropagation();
-        startDrag("band", e, gid, band);
-        return;
-      }
-      if (onGrip) { e.stopPropagation(); return; }   /* Alt+端点：交给 grip 自己的监听 */
+      if (onGrip) return;   /* 交给 grip 自己的监听 */
       startDrag("band", e, gid, band);
     });
   };
 
   ZP.onBandGripMounted = function (grip, gid, edge) {
     grip.addEventListener("pointerdown", function (e) {
-      /* 必须按住 Alt 才进入「改端点」；否则交给整条平移 */
-      if (!e.altKey) {
-        e.stopPropagation();
-        var bandEl = $('.hl-band[data-ann="' + gid + '"]');
-        if (bandEl) startDrag("band", e, gid, bandEl);
-        return;
-      }
+      /* 端点直接拖动改长短，无需 Alt */
       e.stopPropagation();
       startDrag("grip", e, gid, grip, { edge: edge });
     });
@@ -1935,16 +1930,30 @@
     });
   }
 
-  /* 导出模块共用：把一条批注解析成「最终位置」（含人工微调） */
+  /* 导出模块共用：把一条批注解析成「最终位置」（含人工微调）。
+     无 box（或整组坐标聚集）时按「同页批注序号」纵向均分，
+     与界面 paintHighlights 同口径——图片稿 para 全 0 不再挤同一行。 */
   function boardPos(a, res) {
-    var totalPara = Math.max(4, ((res && res.paragraphs) || []).length || 4,
-      ((res && res.annotations) || []).reduce(function (m, x) {
-        return Math.max(m, ((x.para | 0) + 1));
-      }, 0));
+    var all = (res && res.annotations) || [];
+    var page = a.page || 0;
+    var peers = all.filter(function (x) { return (x.page || 0) === page; });
+    if (!peers.length) peers = all;
+    /* 聚集检测：与界面同规则 */
+    var boxed = peers.filter(function (x) { return x.box; });
+    var clustered = false;
+    if (boxed.length >= 3) {
+      var ys = boxed.map(function (x) { return x.box.y; });
+      var xs = boxed.map(function (x) { return (x.box.x1 + x.box.x2) / 2; });
+      var spread = function (arr) { return Math.max.apply(null, arr) - Math.min.apply(null, arr); };
+      clustered = spread(ys) < 15 && spread(xs) < 20;
+    }
     var fbY, fbX1, fbX2;
-    if (a.box) { fbY = a.box.y; fbX1 = a.box.x1; fbX2 = a.box.x2; }
+    if (a.box && !clustered) { fbY = a.box.y; fbX1 = a.box.x1; fbX2 = a.box.x2; }
     else {
-      fbY = Math.min(94, (((a.para | 0) + 0.5) / totalPara) * 100);
+      var i = peers.indexOf(a);
+      if (i < 0) i = 0;
+      var n = Math.max(1, peers.length);
+      fbY = Math.min(94, Math.max(5, ((i + 0.5) / n) * 88 + 5));
       fbX1 = 4; fbX2 = 96;
     }
     return bandPos(a, { y: fbY, x1: fbX1, x2: fbX2 });

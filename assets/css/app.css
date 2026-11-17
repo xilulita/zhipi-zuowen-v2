@@ -1672,25 +1672,21 @@
    ============================================================ */
 .hl-band.moved{box-shadow:0 0 0 1px rgba(255,255,255,.75) inset}
 
-/* 端点把手：平时隐藏，悬停在划线上才出现 */
+/* 端点把手：悬停在划线上即出现，直接拖动改长短（不再要求 Alt）。
+   整条平移拖线的中段，改长短拖两端圆点——两种操作都直观可用。 */
 .hl-grip{
-  position:absolute;width:9px;height:9px;margin-left:-4.5px;
-  border-radius:50%;background:#fffdf7;border:1.5px solid rgba(90,96,106,.8);
-  box-shadow:0 1px 3px rgba(20,22,26,.28);
+  position:absolute;width:13px;height:13px;margin-left:-6.5px;
+  border-radius:50%;background:#fffdf7;border:2px solid rgba(90,96,106,.85);
+  box-shadow:0 1px 4px rgba(20,22,26,.32);
   /* 与划线、编号同一套垂直居中规则：各自只做一次 -50% */
   transform:translateY(-50%);
   opacity:0;pointer-events:none;transition:opacity .14s;
   cursor:ew-resize;z-index:4;
-  /* 只在按住的关键帧才生效：平时整条拖拽优先，避免「想整条移却把线拉长了」 */
-  pointer-events:none;
 }
-/* 只有鼠标停在「那一条」划线上，才显示它自己的两个端点；
-   其他线完全不响应，避免一动鼠标满屏小圆点。
-   ★pointer-events 保持 none：端点只作视觉提示，整条拖拽始终优先。
-     需要调长度时，按住 Alt 再拖圆形把手才进入「改端点」模式。 */
-.hl-band.band-hover .hl-grip{opacity:.95;pointer-events:none}
+/* 鼠标停在那条划线上：显示它自己的两个端点并可直接拖动 */
+.hl-band.band-hover .hl-grip{opacity:.95;pointer-events:auto}
 .hl-band.grip-mode .hl-grip{pointer-events:auto}
-.hl-grip:hover{opacity:1;border-color:var(--accent)}
+.hl-grip:hover{opacity:1;border-color:var(--accent);transform:translateY(-50%) scale(1.2)}
 .hl-band.band-hover{box-shadow:0 0 0 1px rgba(255,255,255,.85) inset,0 1px 3px rgba(30,26,18,.12)}
 
 .hl-no{cursor:grab}

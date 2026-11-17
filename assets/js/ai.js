@@ -622,21 +622,61 @@ window.ZP = window.ZP || {};
   /* 换行匹配：用字符码构造，避免源码里出现真实换行 */
   var NEWLINES = new RegExp("[" + String.fromCharCode(10) + String.fromCharCode(13) + "]+");
 
-  /* 校验并规整模型给出的句子位置：0–100 的百分比 */
-  function normBox(b) {
+  /* 校验并规整模型给出的句子位置：0–100 的百分比。
+     兼容多种模型输出习惯：
+     - 标准 {y,x1,x2}；别名 top/left/right、y1/x_start 等
+     - 0–1 小数（自动 ×100）；像素值（>100 时按 ctx.imgW/imgH 换算）
+     - 只有 y 没有 x：给整行宽默认值，避免线缩成一点 */
+  function normBox(b, ctx) {
     if (!b || typeof b !== "object") return null;
-    function num(v) {
+    var imgW = (ctx && ctx.imgW) || 0, imgH = (ctx && ctx.imgH) || 0;
+    var rawY = b.y !== undefined ? b.y : (b.top !== undefined ? b.top : b.y1);
+    var rawX1 = b.x1 !== undefined ? b.x1 : (b.left !== undefined ? b.left : (b.x_start !== undefined ? b.x_start : b.x));
+    var rawX2 = b.x2 !== undefined ? b.x2 : (b.right !== undefined ? b.right : (b.x_end !== undefined ? b.x_end : b.w));
+    /* 单位判定整组一致：任一坐标 >100 → 全部按像素换算（避免 x1=80px 被误判 80%）；
+       全部 ≤1 → 全部按 0–1 小数；否则按百分比 */
+    var vals = [rawY, rawX1, rawX2].map(parseFloat).filter(isFinite);
+    var isPx = vals.some(function (v) { return v > 100; }) && imgW && imgH;
+    var isFrac = !isPx && vals.length && vals.every(function (v) { return v >= 0 && v <= 1; });
+    function num(v, dim) {
       var n = parseFloat(v);
       if (!isFinite(n)) return null;
+      if (isPx && dim) n = n / dim * 100;
+      else if (isFrac) n = n * 100;
       return Math.max(0, Math.min(100, n));
     }
-    var y = num(b.y), x1 = num(b.x1), x2 = num(b.x2);
+    var y = num(rawY, imgH);
+    var x1 = num(rawX1, imgW);
+    var x2 = num(rawX2, imgW);
     if (y === null) return null;
-    if (x1 === null) x1 = 0;
-    if (x2 === null) x2 = 100;
+    if (x1 === null) x1 = 4;
+    if (x2 === null) x2 = 96;
     if (x2 < x1) { var t = x1; x1 = x2; x2 = t; }
-    if (x2 - x1 < 1) x2 = Math.min(100, x1 + 8);
+    /* 线太短（<8% 图宽）时向两侧扩到至少 8%，端点不越界——
+       模型常把 x1/x2 估成几乎相同，导致线短到无法拖动 */
+    if (x2 - x1 < 8) {
+      var need = 8 - (x2 - x1);
+      x1 = Math.max(0, x1 - need / 2);
+      x2 = Math.min(100, x2 + need / 2);
+      if (x2 - x1 < 8) { if (x1 === 0) x2 = Math.min(100, 8); else x1 = Math.max(0, x2 - 8); }
+    }
     return { y: y, x1: x1, x2: x2 };
+  }
+
+  /* 批注坐标整体健康检查：模型偶尔把所有 box 都估到同一角落
+     （如全在右下角挤成一团）。检测到聚集时整组丢弃 box，
+     前端退回「按批注序号纵向均分」的兜底排布，保证可用可拖。 */
+  function boxesDegenerate(anns) {
+    var bs = anns.filter(function (a) { return a.box; }).map(function (a) { return a.box; });
+    if (bs.length < 3) return false;
+    var ys = bs.map(function (b) { return b.y; });
+    var xs = bs.map(function (b) { return (b.x1 + b.x2) / 2; });
+    function spread(arr) {
+      var mn = Math.min.apply(null, arr), mx = Math.max.apply(null, arr);
+      return mx - mn;
+    }
+    /* 纵向分布不足图高 15% 且横向中心不足图宽 20% → 挤成一团 */
+    return spread(ys) < 15 && spread(xs) < 20;
   }
 
   /**
@@ -720,9 +760,14 @@ window.ZP = window.ZP || {};
         note: String(a.note || "").slice(0, 400),
         fix: String(a.fix || "").slice(0, 400),
         /* 模型给出的划线位置（百分比）；缺失或异常时为 null，前端退回按段落估算 */
-        box: normBox(a.box)
+        box: normBox(a.box, ctx)
       };
     });
+
+    /* 坐标聚集检测：所有线挤在同一角落时整组作废，走兜底均分排布 */
+    if (boxesDegenerate(anns)) {
+      anns.forEach(function (a) { a.box = null; });
+    }
 
     var pol = d.polished || {};
     var polParas = (Array.isArray(pol.paras) ? pol.paras : []).map(function (p) { return String(p).trim(); }).filter(Boolean);

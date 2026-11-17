@@ -112,38 +112,41 @@
     try { document.documentElement.setAttribute('data-layout-done', '1'); } catch (e) {}
   }
 
-  /* PDF 导出专用：图片原稿页铺满 A4。
-   * 思路：三栏白板默认 972×796（宽高比 1.22）太「扁」，等比放大铺满页宽时
-   * 只占页高 ~55%，下方大片空白。PDF 模式下重排比例——加大中间图片列、
-   * 收窄批注卡列，让白板更高瘦；图片等比放大不裁切，批注卡仍两侧。
-   * 步骤：① 改 CSS 变量重排 → ② 重新排卡（fixImage）→ ③ 量高，
-   * 若仍超预算再整体 transform 缩小防拆页。屏幕 HTML 不受影响。 */
-  var FIT_BUDGET = 1330;      /* 白板可用逻辑高度预算（扣页眉与余量） */
-  var PDF_SW = 720;           /* PDF 图片列宽 */
-  var PDF_CW = 165;           /* PDF 批注卡列宽（加宽容纳更大字号） */
-  var PDF_GP = 14;            /* PDF 栏间距 */
-  var PDF_ECFS = 15.5;        /* PDF 批注卡正文字号（屏幕默认 12） */
+  /* PDF 导出专用：原稿页整页自适应铺满 A4（既缩也放）。
+   * 页边距 8mm → 可印区约 733×1062px（96dpi）。
+   * 目标：白板等比缩放到「宽 ≤ 可印宽 且 高 ≤ 可印高」的最大比例，
+   * 一张图/一篇原文连同两侧批注完整占满一页，不拆页、不留大空白。
+   * 原稿页字号独立：作文正文与批注卡都比报告正文更大（PDF_ECFS/PDF_TFS）。
+   * 实现：transform:scale 内联写入（Chromium 打印管线重置 zoom，
+   * @media print 不稳定），margin-bottom 补偿占位高度差。 */
+  var PAGE_W_PX = 733;        /* A4 宽 210mm - 16mm 边距 ≈ 733px */
+  var PAGE_H_PX = 1062;       /* A4 高 297mm - 16mm 边距 ≈ 1062px */
+  var HEAD_RESERVE = 90;      /* 页眉（sheet-head）预留高度 */
+  var PDF_SW = 780;           /* PDF 图片列基准宽（重排用） */
+  var PDF_CW = 150;           /* PDF 批注卡列宽（容纳大字号） */
+  var PDF_GP = 12;            /* PDF 栏间距 */
+  var PDF_ECFS = 17;          /* PDF 批注卡正文字号（独立，大于报告正文） */
+  var PDF_TFS = 19;           /* PDF 原稿作文字号（文本板独立） */
 
   function fitBoards() {
     if (!document.documentElement.classList.contains('pdf-export')) return;
+    /* 第一遍：重排 + 排卡，量出各白板原始尺寸，确定文档宽 */
+    var boards = [];
     var maxBoardW = 0;
     document.querySelectorAll('.sheet-board').forEach(function (sh) {
       var bd = sh.querySelector('.eboard');
       if (!bd) return;
-      /* 还原 transform，避免上次结果影响量高 */
       sh.style.transform = '';
       sh.style.transformOrigin = '';
       sh.style.marginBottom = '';
-      /* 批注卡字号：PDF 单独放大（图片页与文本页都生效），
-         子元素用 em 跟随，卡片整体协调变大 */
+      /* 原稿页独立字号：批注卡 + 作文正文都放大 */
       bd.style.setProperty('--ecfs', PDF_ECFS + 'px');
+      var tbody = bd.querySelector('.t-body');
+      if (tbody) tbody.style.fontSize = PDF_TFS + 'px';
       if (!bd.classList.contains('text-board')) {
-        /* 图片页：重排为高瘦比例，图片等比放大 */
         bd.style.setProperty('--sw', PDF_SW + 'px');
         bd.style.setProperty('--cw', PDF_CW + 'px');
         bd.style.setProperty('--gp', PDF_GP + 'px');
-        /* 先清掉 fix() 锁死的内联高度，让 esheet 的 calc(宽×比例) 生效，
-           再量新纸面高度；否则量到的还是旧宽度的高度 */
         var st = bd.querySelector('.esheet');
         if (st) { st.style.height = ''; st.style.minHeight = ''; }
         bd.style.height = '';
@@ -152,29 +155,43 @@
         var newH = st ? st.offsetHeight : 0;
         bd.querySelectorAll('.ecol').forEach(function (c) { c.style.height = newH + 'px'; });
         bd.style.minHeight = newH + 'px';
-        fixImage(bd);   /* 按新纸面高度 + 新字号重新排卡 */
+        fixImage(bd);
       } else {
-        /* 文本页：字号变大后卡片更高，重新排卡防重叠 */
         fixText(bd);
       }
-      /* 整页防拆：超高才整体缩小（transform 打印管线保留）。
-         字号放大后若某页批注特别多导致超高，这里自动微缩兜底，
-         保证一页装得下、不拆页。 */
-      var h = sh.offsetHeight;
-      if (!h) return;
-      var fit = FIT_BUDGET / h;
-      if (fit < 1) {
-        sh.style.transform = 'scale(' + fit.toFixed(4) + ')';
-        sh.style.transformOrigin = 'top center';
-        sh.style.marginBottom = Math.round(h * (fit - 1)) + 'px';
-      }
-      var bw = bd.offsetWidth;
-      if (bw > maxBoardW) maxBoardW = bw;
+      var w = bd.offsetWidth, h = sh.offsetHeight;
+      if (w > maxBoardW) maxBoardW = w;
+      boards.push({ sh: sh, bd: bd, w: w, h: h });
     });
-    /* 文档宽跟随最宽白板（printToPDF 前主进程会用 CDP 把视口设为文档宽，
-       打印按视口缩放，白板即可完整铺满页宽、两侧批注不越界） */
+    /* 文档宽跟随最宽白板（原始宽）：主进程 CDP 视口=文档宽，
+       打印管线按视口把整页缩到页宽，白板恰好铺满页宽、两侧批注不越界。
+       原稿页不做放大（MAX_FIT=1.0）：放大需同步扩视口，易与分页管线
+       相互作用导致错位/裁切；铺满由「重排高瘦比例 + 视口缩放」保证。 */
+    var MAX_FIT = 1.0;
     var doc = document.querySelector('.doc');
+    var docW = Math.max(1032, maxBoardW);
     if (doc && maxBoardW > 1032) doc.style.minWidth = maxBoardW + 'px';
+    var viewportScale = PAGE_W_PX / docW;
+
+    /* 第二遍：超高页整体缩小防拆（最终高 = h × fit × viewportScale ≤ 可印高）。
+       transform 内联写入，margin-bottom 补偿占位差。 */
+    boards.forEach(function (b) {
+      if (!b.h) return;
+      var reserve = HEAD_RESERVE;
+      var prev = b.sh.previousElementSibling;
+      if (!prev || !prev.classList.contains('sheet')) {
+        var dh = document.querySelector('.doc-head');
+        if (dh) reserve += dh.offsetHeight + 12;
+      }
+      var target = PAGE_H_PX - reserve;
+      var fit = target / (b.h * viewportScale);
+      if (fit > MAX_FIT) fit = MAX_FIT;
+      if (fit < 0.98) {
+        b.sh.style.transform = 'scale(' + fit.toFixed(4) + ')';
+        b.sh.style.transformOrigin = 'top center';
+        b.sh.style.marginBottom = Math.round(b.h * (fit - 1)) + 'px';
+      }
+    });
   }
   /* 供 PDF 主进程在 printToPDF 前调用：进入 PDF 模式并重新适配 */
   window.__zpPdfFit = function () {

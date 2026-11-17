@@ -1,7 +1,7 @@
 {
   "name": "bimo-shengxiang",
   "productName": "笔墨生香",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "笔墨生香 · AI 作文批改工作台（网页版 + Electron 桌面版）",
   "main": "main.js",
   "author": "笔墨生香",

@@ -1726,6 +1726,9 @@
           title: S.title || "作文批改",
           imageDataUrl: dataUrl,
           pages: srcList.length,
+          /* 原图尺寸：模型把坐标输出成像素时按此换算成百分比 */
+          imgW: srcList[0].width || 0,
+          imgH: srcList[0].height || 0,
           signal: ctl.signal, trace: trace
         }, function (title, pct) {
           R.loading(true, title, "视觉模型直接读取原稿，请稍候", pct);
