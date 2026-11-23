@@ -19,6 +19,15 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+  /* 允许批注里极少量内联标记：<del>/<ins>/<b>，与界面 render.js 的 rich() 同规则。
+     改写示例常写成「改成：<del>原文</del><ins>改写</ins>」，
+     直接 esc 会把标签当普通文字显示出来（实测卡片里出现 &lt;del&gt; 字面量）。 */
+  function rich(t) {
+    return esc(t)
+      .replace(/&lt;(\/?)(del|ins|b)&gt;/g, function (m, slash, tag) {
+        return "<" + slash + tag + ">";
+      });
+  }
 
   /* 四维配色：与界面同一套暖色阶梯 */
   var DIM_COLORS = {
@@ -94,10 +103,13 @@
       /* 除最后一张外，每张报告分段另起一页 */
       +   ".sheet + .sheet{break-before:page;page-break-before:always;"
       +     "margin-top:0;padding-top:0;border-top:0}"
-      /* 原稿白板：左批注—图片/原文—右批注 三栏必须整体同页，
-         不允许图片单独成页、批注卡被拆到下一页 */
+      /* 原稿白板：图片板三栏必须整体同页；文本板 PDF 走流式布局，
+         允许自然分页（批注多时不硬缩成小字） */
       +   ".sheet-board{break-inside:avoid-page;page-break-inside:avoid}"
       +   ".eboard,.ecol,.esheet{break-inside:avoid-page;page-break-inside:avoid}"
+      +   ".text-sheet,.text-board,.text-board .eboard,.text-board .tsheet{"
+      +     "break-inside:auto;page-break-inside:auto}"
+      +   ".text-board .t-body p{break-inside:avoid;page-break-inside:avoid}"
       /* 批注卡允许在页内自然排布（整板已 avoid，卡不再单独 avoid，
          避免「板放不下→整体推下页→前页大片空白」） */
       +   ".drill,.issue,.card,.pol,.hero,.tk-legend,.tech,.tip-card,img{"
@@ -113,6 +125,8 @@
          此处只保留超高页防拆规则。 */
       + "@media print{"
       +   "html.pdf-export .sheet-board{break-inside:avoid-page;page-break-inside:avoid}"
+      +   ".text-sheet{break-inside:auto;page-break-inside:auto}"
+      +   ".text-board{break-inside:auto;page-break-inside:auto}"
       + "}";
   }
 
@@ -156,9 +170,9 @@
           '<span class="ecard-no" style="background:' + it.color + '">' + it.no + "</span>" +
           '<div class="ecard-tag" style="color:' + it.color + '">' +
             esc(it.a.tag || "") + "</div>" +
-          '<div class="ecard-note">' + esc(it.a.note || "") + "</div>" +
+          '<div class="ecard-note">' + rich(it.a.note || "") + "</div>" +
           (fixTxt ? '<div class="ecard-fix' + (isRed ? " fix-short" : "") + '"><i>' +
-            (isRed ? "正确写法" : "改写例句") + "</i>" + esc(fixTxt) + "</div>" : "") +
+            (isRed ? "正确写法" : "改写例句") + "</i>" + rich(fixTxt) + "</div>" : "") +
         "</div>";
     }
 
@@ -217,6 +231,12 @@
       + ".ecard-fix{margin-top:6px;padding:5px 7px;background:#faf7ef;border-left:2px solid #dcc9a5;"
       +   "border-radius:0 4px 4px 0;font-size:.95em;line-height:1.55;color:#6b6047}"
       + ".ecard-fix i{display:block;font-style:normal;font-size:.8em;color:#a89e8b;margin-bottom:2px}"
+      /* 改写示例里的「原文→改写」标记：删除线画掉原句，改写内容用底色强调 */
+      + ".ecard-fix del,.ecard-note del{color:#a08f78;text-decoration:line-through;"
+      +   "text-decoration-color:rgba(160,143,120,.55)}"
+      + ".ecard-fix ins,.ecard-note ins{text-decoration:none;color:#8a3a24;"
+      +   "background:#fdf1ec;border-bottom:1.5px solid rgba(207,68,54,.35);border-radius:2px;"
+      +   "padding:0 1px}"
       + ".ecard-fix.fix-short{background:#fdf3f1;border-left-color:#d98b78;color:#8f3a25}"
       + ".ecard-fix.fix-short i{color:#a2492f}";
 
@@ -251,78 +271,237 @@
   function textSheetPage(res, opt) {
     opt = opt || {};
     var anns = (res && (res.annotations || res.annos)) || [];
-    var paras = (res && (res.paragraphs || (res.essay && res.essay.paras))) || [];
+    var rawParas = (res && (res.paragraphs || (res.essay && res.essay.paras))) || [];
     /* 段落兜底：老历史可能没存 paragraphs，用稿源文本现切 */
-    if (!paras.length && opt.text) paras = ZP.splitParagraphs(opt.text);
-    paras = paras.map(function (p) {
+    if (!rawParas.length && opt.text) rawParas = ZP.splitParagraphs(opt.text);
+
+    /* ★ 段内内嵌批注（sent.a）必须提出来，并补上 sentence = 该句原文。
+       演示样例与「AI 分段结果」都是这种结构：真正精确的句子锚点只存在于
+       段落句子里，而扁平 annotations 往往没有 sentence 字段。
+       此前只拍平成字符串、丢弃 sent.a，matchMarks 找不到引句，
+       整段被当成一条标记 → 正文划满整段线、其余批注全掉进「整篇批注」，
+       甚至出现整段正文凭空消失。 */
+    var embedded = [];
+    if (rawParas.length && Array.isArray(rawParas[0])) {
+      rawParas.forEach(function (sentArr, pi) {
+        if (!Array.isArray(sentArr)) return;
+        sentArr.forEach(function (sent) {
+          if (!sent || !sent.a) return;
+          embedded.push({
+            para: pi,
+            type: sent.a.type,
+            tag: sent.a.tag,
+            sentence: String(sent.t || ""),
+            note: sent.a.note,
+            fix: sent.a.fix
+          });
+        });
+      });
+    }
+    if (embedded.length) {
+      /* 内嵌批注带精确句子，直接作为唯一来源。
+         扁平 annotations 与它是「同一批批注的两套文案」（演示样例里
+         内嵌版更详细、扁平版是精简版），混用会把 8 条渲染成 15 条，
+         或按「段落+类型」判重误删同段的第 3 条。
+         只保留扁平里段落没有内嵌批注的那些（整篇级、旧数据）。 */
+      var paraHasEmbed = {};
+      embedded.forEach(function (a) { paraHasEmbed[a.para | 0] = true; });
+      var flatKeep = anns.filter(function (a) {
+        if (typeof a.para !== "number") return true;     /* 整篇级批注，保留 */
+        return !paraHasEmbed[a.para | 0];
+      });
+      anns = embedded.concat(flatKeep);
+    }
+
+    var paras = rawParas.map(function (p) {
       if (Array.isArray(p)) return p.map(function (s) { return s.t || ""; }).join("");
       return String(p);
     }).filter(function (t) { return t.trim(); });
+    /* 稿源文本常把标题也当第一段粘进来：纸面上已有居中标题，
+       再排一遍就成了「标题出现两次」。
+       ★ 不能直接切掉这一段：批注的 para 是原始段落序号，
+         slice(1) 会让后面所有批注整体错位到别的段落
+         （实测卡片全数消失、角标错配）。这里只标记「本段不渲染」，
+         段落序号保持不变。 */
+    var skipPara = -1;
+    var titleTxt = String((res && res.title) || "").trim();
+    if (titleTxt && paras.length > 1) {
+      var firstT = String(paras[0] || "").replace(/[\s　]/g, "");
+      if (firstT === titleTxt.replace(/[\s　]/g, "")) skipPara = 0;
+    }
     if (!paras.length) return "";
 
-    /* 逐段对齐：与界面 essay()/splitParagraph 相同的匹配规则 */
-    var items = [];           /* {a, no, paraIdx} 按界面编号顺序 */
+    /* ------------------------------------------------------------
+       批注分两类，渲染位置不同：
+       · 错别字（red）——不占正文旁批注位。原文句中只留彩色角标条，
+                          汇总成表放在「全文概览」页。
+       · 其余批注    ——照旧挂到对应段落之后（病句/润色/建议/好句）。
+       所有条目共用同一套编号：先给能定位到句子的错别字编号（汇总表用），
+       再给其余批注编号（旁批注用），保证两边编号互不冲突、
+       与界面上「全文序号」的顺序一致。
+       ------------------------------------------------------------ */
+    var TYPO = "red";
+    var typoList = [];        /* 汇总表条目：{no, a, sentence} */
+    var typoMarkIdx = [];     /* 原文句子上的角标序号 */
+    var items = [];           /* 旁批注卡：{a, no, paraIdx} */
+    var paraNos = [];         /* 每段挂的卡编号 */
+
+    /* 先定位每条批注落在哪个句子（与界面同一套 matchMarks 规则） */
+    var marksByPara = paras.map(function (text, pi) {
+      return ZP.Render.matchMarks(text, pi, anns);
+    });
+
+    /* 错别字编号不预先分配：只有真正画在原文上的才占号。
+       预分配会把「整段兜底、最终跳过」的条目也算进去，
+       导致正文角标出现断号（实测 1..5 之后直接跳到 7）。
+       编号在下面渲染时按出现顺序分配，汇总表沿用同一批号。 */
+    function typoNo(a) {
+      for (var i = 0; i < typoMarkIdx.length; i++) {
+        if (typoMarkIdx[i].a === a) return typoMarkIdx[i].no;
+      }
+      var no = typoMarkIdx.length + 1;
+      typoMarkIdx.push({ a: a, no: no });
+      typoList.push({ no: no, a: a, sentence: (a.sentence || a.quote || "").trim() });
+      return no;
+    }
+
+    /* 卡片编号必须在渲染「之前」就知道错别字占了多少号，
+       否则边渲染边累加，先出现的卡片会和后出现的角标撞号
+       （实测卡片 3 与角标 3 重号）。这里预扫一遍，
+       用与渲染完全相同的跳过条件统计实际会画出的角标数。 */
+    var typoDrawCount = 0;
+    marksByPara.forEach(function (marks, pi) {
+      if (pi === skipPara) return;
+      var text = paras[pi];
+      marks.forEach(function (m) {
+        if (m.a.type !== TYPO) return;
+        if (m.start <= 2 && (m.end - m.start) >= text.length - 4 && !typoHit(text, m.a)) return;
+        typoDrawCount++;
+      });
+    });
+
+    /* 其余批注接着编号（界面顺序：错别字在前，与汇总表一致） */
     var paraHtml = paras.map(function (text, pi) {
-      var marks = ZP.Render.matchMarks(text, pi, anns);
-      var html = "", cursor = 0;
+      if (pi === skipPara) { paraNos.push([]); return ""; }
+      var marks = marksByPara[pi];
+      var html = "", cursor = 0, nos = [];
       marks.forEach(function (m) {
         if (m.start > cursor) html += esc(text.slice(cursor, m.start));
-        var no = items.length + 1;
-        items.push({ a: m.a, no: no, paraIdx: pi });
         var color = ZP.Render.typeColor(m.a.type);
-        html += '<span class="tno" style="background:' + color + '">' + no + "</span>" +
-          '<span class="tsent t-' + esc(m.a.type || "violet") + '" data-tno="' + no + '">' +
-          esc(text.slice(m.start, m.end)) + "</span>";
+        if (m.a.type === TYPO) {
+          /* 角标条：句中留彩色标记 + 小数字，不建卡片。
+             跨越整段时（模型常把整句当「错别字」引句）只标出真正
+             出问题的词，否则整段刷红会被误读成「整段都是错字」。 */
+          var tno = 0;
+          /* ★ 整段级兜底标记不画：matchMarks 第 3 步在定位不到引句时
+             会把「整段」当作一条标记（m.start=0, m.end=段落长度）。
+             对错别字尤其有害——视觉上像「整段都是错字」，段尾还会
+             多出一个孤立角标。这类批注只进概览页汇总表。 */
+          if (m.start <= 2 && (m.end - m.start) >= text.length - 4) {
+            /* 整段级标记分两种：
+               · 批注能指明具体错词（fix/note 里点了字）→ 仍要标，
+                 否则错别字在原文里彻底消失，只剩概览表可查；
+               · 指不出错词、说明也是段落级的 → 属于 matchMarks 兜底，
+                 整段划线会像「整段都是错字」，跳过、只留汇总表。 */
+            var hitProbe = typoHit(text, m.a);
+            if (!hitProbe) return;      /* forEach 内 continue */
+            /* 能指到具体错词：只标那个词（见下方 pick 分支） */
+          }
+          tno = typoNo(m.a);
+          var spanTxt = text.slice(m.start, m.end);
+          var pick = typoHit(spanTxt, m.a);
+          if (pick && pick.len < spanTxt.length) {
+            /* 长跨度：正文保持原样，只在出问题的词上加下划线与角标 */
+            html += esc(text.slice(m.start, m.start + pick.at)) +
+              '<span class="tsent t-' + esc(m.a.type) + '" data-typo="' + tno + '">' +
+              esc(spanTxt.substr(pick.at, pick.len)) + "</span>" +
+              '<span class="tmark t-' + esc(m.a.type) + '" data-typo="' + tno + '">' + tno + "</span>" +
+              esc(spanTxt.slice(pick.at + pick.len));
+          } else {
+            /* 退化为整段/整句标记时加 long：用细下划线代替整块底色，
+               避免「整段刷红 = 整段都是错字」的误读。 */
+            var isLong = spanTxt.length > 18;
+            html += '<span class="tsent t-' + esc(m.a.type) +
+              (isLong ? " t-long" : "") + '" data-typo="' + tno + '">' +
+              esc(spanTxt) + "</span>" +
+              '<span class="tmark t-' + esc(m.a.type) + '" data-typo="' + tno + '">' + tno + "</span>";
+          }
+        } else {
+          /* 编号接在错别字之后：基数是预扫出的角标总数，保证不撞号 */
+          var no = typoDrawCount + items.length + 1;
+          items.push({ a: m.a, no: no, paraIdx: pi });
+          nos.push(no);
+          /* ★ 段落级兜底标记（matchMarks 第 3 步把整段当成一条）不画整段线：
+             没有引句时它铺满整段，视觉上像「整段都要改」，段首还会多出
+             一个孤立编号。这类批注只在段后挂卡片，正文不加任何标记。 */
+          var whole = (m.start <= 2 && (m.end - m.start) >= text.length - 4);
+          if (whole) {
+            /* ★ 整段兜底标记虽然不划线，但正文必须原样输出。
+               只跳过 span 而不补文本，会让 cursor 直接跳到段尾，
+               整段正文凭空消失（实测第一段整段不见）。 */
+            html += esc(text.slice(m.start, m.end));
+          } else {
+            /* 句子批注按正常荧光标记：不能因为句子长就降级成下划线——
+               长句是它的正常范围，降级后会出现「荧光 + 尾部一条长虚线」的怪相。 */
+            html += '<span class="tno" style="background:' + color + '">' + no + "</span>" +
+              '<span class="tsent t-' + esc(m.a.type || "violet") + '" data-tno="' + no + '">' +
+              esc(text.slice(m.start, m.end)) + "</span>";
+          }
+        }
         cursor = m.end;
       });
       if (cursor < text.length) html += esc(text.slice(cursor));
-      return "<p>" + html + "</p>";
-    }).join("");
+      paraNos.push(nos);
+      return '<p data-pi="' + pi + '">' + html + "</p>";
+    });   /* 注意：这里保留数组，稍后逐段拼接自己的批注块 */
 
-    /* 未能定位到具体句子的批注也绝不丢：归入「整篇批注」附在文末 */
-    var placed = items.map(function (it) { return it.a; });
-    var loose = anns.filter(function (a) { return placed.indexOf(a) < 0; });
-    loose.forEach(function (a) {
-      items.push({ a: a, no: items.length + 1, paraIdx: -1 });
+    /* 未能定位到句子的批注：错别字进汇总表（无原句），其余进「整篇批注」 */
+    var located = [];
+    marksByPara.forEach(function (ms) { ms.forEach(function (m) { located.push(m.a); }); });
+    var unplacedTypo = [], unplaced = [];
+    anns.forEach(function (a) {
+      if (located.indexOf(a) >= 0) return;
+      if (a.type === TYPO) {
+        typoList.push({ no: typoList.length + 1, a: a, sentence: (a.sentence || a.quote || "").trim() });
+      } else {
+        unplaced.push(a);
+      }
     });
-    var looseHtml = loose.length
+    /* 整篇批注（无对应句子）：紧凑列表，绝不铺成卡片——卡片会占
+       200+px 把纸面撑高、并在两栏里重复一次。 */
+    var looseHtml = unplaced.length
       ? '<div class="tloose"><span class="tloose-lb">整篇批注</span>' +
-        loose.map(function (a) {
-          var no = items.filter(function (it) { return it.a === a; })[0].no;
+        unplaced.map(function (a) {
+          var no = typoDrawCount + items.length + 1;
+          items.push({ a: a, no: no, paraIdx: -1 });
           var color = ZP.Render.typeColor(a.type);
           return '<p><span class="tno" style="background:' + color + '">' + no + "</span>" +
-            (a.sentence || a.quote ? '<q>' + esc(a.sentence || a.quote) + "</q> " : "") +
-            esc(a.note || a.html || a.comment || "") +
-            (a.fix ? "（" + esc(a.fix) + "）" : "") + "</p>";
+            (a.sentence || a.quote ? "<q>" + esc(a.sentence || a.quote) + "</q> " : "") +
+            rich(a.note || a.html || a.comment || "") +
+            (a.fix ? "（" + rich(a.fix) + "）" : "") + "</p>";
         }).join("") + "</div>"
       : "";
 
-    /* 左右交替排卡，与图片白板一致；data-top 用「该句在原文中的地位」估算，
-       导出打开后由 report-fix.js 实测句子的 offsetTop 再精确对齐 */
+    /* 左右交替：只排「有句子的批注」，整篇批注不占列 */
     var leftList = [], rightList = [];
     items.forEach(function (it, i) {
+      if (it.paraIdx < 0) return;             /* 整篇批注不进卡片列 */
       (i % 2 === 0 ? leftList : rightList).push(it);
     });
 
     function tcard(it) {
       var a = it.a;
-      var isRed = a.type === "red";
       var fixTxt = String(a.fix || "").trim();
       var color = ZP.Render.typeColor(a.type);
-      return '<div class="ecard tcard ' + (isRed ? "is-red" : "") + '"' +
-          ' data-tno="' + it.no + '"' +
+      return '<div class="ecard tcard" data-tno="' + it.no + '"' +
           ' style="border-left-color:' + color + '">' +
           '<span class="ecard-no" style="background:' + color + '">' + it.no + "</span>" +
           '<div class="ecard-tag" style="color:' + color + '">' + esc(a.tag || "") + "</div>" +
-          '<div class="ecard-note">' + esc(a.note || a.html || a.comment || "") + "</div>" +
-          (fixTxt ? '<div class="ecard-fix' + (isRed ? " fix-short" : "") + '"><i>' +
-            (isRed ? "正确写法" : "改写例句") + "</i>" + esc(fixTxt) + "</div>" : "") +
+          '<div class="ecard-note">' + rich(a.note || a.html || a.comment || "") + "</div>" +
+          (fixTxt ? '<div class="ecard-fix"><i>改写例句</i>' + rich(fixTxt) + "</div>" : "") +
         "</div>";
     }
 
-    /* 文本板自带完整 .eboard 基础规则：此前只写了 .eboard.text-board 增量，
-       display:flex 等基础样式全依赖图片白板的 <style>；纯文本批改时
-       图片板不存在，白板退化成 block、三栏全部叠到左侧。这里补齐。 */
     var css = ""
       + ".eboard{position:relative;display:flex;align-items:flex-start;gap:" + L.gap + "px;"
       +   "width:" + L.boardW + "px;min-width:" + L.boardW + "px;margin:0 auto}"
@@ -339,9 +518,12 @@
       + ".ecard-fix{margin-top:6px;padding:5px 7px;background:#faf7ef;border-left:2px solid #dcc9a5;"
       +   "border-radius:0 4px 4px 0;font-size:.95em;line-height:1.55;color:#6b6047}"
       + ".ecard-fix i{display:block;font-style:normal;font-size:.8em;color:#a89e8b;margin-bottom:2px}"
-      + ".ecard-fix.fix-short{background:#fdf3f1;border-left-color:#d98b78;color:#8f3a25}"
-      + ".ecard-fix.fix-short i{color:#a2492f}"
-      + ".eboard.text-board{align-items:stretch}"
+      + ".ecard-fix del,.ecard-note del{color:#a08f78;text-decoration:line-through;"
+      +   "text-decoration-color:rgba(160,143,120,.6)}"
+      + ".ecard-fix ins,.ecard-note ins{text-decoration:none;color:#8a3a24;"
+      +   "background:#fdf1ec;border-bottom:1.5px solid rgba(207,68,54,.35);border-radius:2px;"
+      +   "padding:0 1px}"
+      + ".eboard.text-board{align-items:flex-start}"
       + ".tcol{position:relative;flex:0 0 " + L.cardW + "px;width:" + L.cardW + "px}"
       + ".tsheet{position:relative;flex:0 0 " + L.sheetW + "px;width:" + L.sheetW + "px;"
       +   "background:#fff;border:1px solid #e6e0d2;border-radius:2px;"
@@ -354,9 +536,8 @@
       +   "color:#26292f;text-align:justify}"
       + ".tsheet .t-body p{margin:0 0 .35em;text-indent:2em}"
       + ".tsheet .t-body p:last-child{margin-bottom:0}"
-      /* 荧光高亮：与界面 .sent.a-* 同一套颜色 */
       + ".tsent{border-radius:2px;padding:0 1px}"
-      + ".tsent.t-red{background:linear-gradient(180deg,transparent 64%,rgba(207,68,54,.15) 64%)}"
+      + ".tsent.t-red{background:linear-gradient(180deg,transparent 64%,rgba(207,68,54,.18) 64%)}"
       + ".tsent.t-amber{background:linear-gradient(180deg,transparent 64%,rgba(209,149,42,.19) 64%)}"
       + ".tsent.t-green{background:linear-gradient(180deg,transparent 64%,rgba(47,143,107,.16) 64%)}"
       + ".tsent.t-violet{background:linear-gradient(180deg,transparent 64%,rgba(122,92,196,.16) 64%)}"
@@ -364,14 +545,77 @@
       +   "border-radius:50%;font-size:8px;font-weight:700;color:#fff;margin:0 2px;"
       +   "vertical-align:2px;font-family:ui-monospace,Menlo,Consolas,monospace;"
       +   "box-shadow:0 1px 2px rgba(0,0,0,.18);text-indent:0}"
-      + ".tcard{position:absolute;left:0;width:100%}"
+      /* 错别字角标：句右下一个小方块，只在句中留痕，不给旁批注位 */
+      + ".tmark{display:inline-block;min-width:12px;height:12px;line-height:12px;text-align:center;"
+      +   "border-radius:3px;font-size:8px;font-weight:700;color:#fff;margin:0 1px;"
+      +   "vertical-align:1px;font-family:ui-monospace,Menlo,Consolas,monospace;"
+      +   "text-indent:0;box-shadow:0 1px 2px rgba(0,0,0,.16)}"
+      + ".tmark.t-red{background:#cf4436}"
+      /* 长跨度标记：只画下划线，不做整块底色 */
+      + ".tsent.t-long{background:none;border-bottom:1.5px solid rgba(207,68,54,.55);"
+      +   "border-radius:0;padding:0}"
+      + ".tsent.t-long.t-amber{border-bottom-color:rgba(209,149,42,.6)}"
+      + ".tsent.t-long.t-green{border-bottom-color:rgba(47,143,107,.55)}"
+      + ".tsent.t-long.t-violet{border-bottom-color:rgba(122,92,196,.55)}"
       + ".tloose{margin-top:14px;padding-top:10px;border-top:1px dashed #e6dfd0}"
       + ".tloose-lb{display:inline-block;font-size:10px;letter-spacing:.1em;font-weight:600;"
       +   "color:#9a7c46;margin-bottom:4px}"
       + ".tloose p{margin:0 0 5px;font-size:14.5px;line-height:1.7;color:#5d6470;text-indent:0}"
-      + ".tloose q{color:#8a7a5c;quotes:'「' '」'}";
+      + ".tloose q{color:#8a7043;quotes:'「' '」'}"
+      /* PDF 流式布局：正文全宽，批注卡两卡一行挂在对应段后。
+         批注多时自然分页、字号正常、无大片空白（三栏绝对定位在
+         批注多时会把整板撑得极高，整页适配缩到 3pt 字）。 */
+      /* 导出的 HTML 与 PDF 共用同一套流式版式：正文全宽 + 每段后挂批注卡。
+         三栏绝对定位版式只留在软件界面里——卡片一多就会互相挤压，
+         HTML 打开时没有额外的排版脚本兜底，问题更明显。 */
+      + ".text-board .tcol{display:none}"
+      + ".text-board .tsheet{flex:1 1 auto;width:auto}"
+      + ".text-board .tflow{display:block}"
+      /* 流式卡片必须保留定位上下文：ecard-no 是 absolute 的编号气泡，
+         若卡片改成 static，气泡会失去参照、全部堆到纸面左上角。 */
+      + ".tflow .tcard{position:relative;left:auto;top:auto;transform:none;width:auto;margin:0}"
+      /* 每行两张卡：行容器必须是普通块级盒——Chromium 对 flex / grid
+         容器的分页支持不可靠，会把卡片从中间横切；块级盒 +
+         break-inside:avoid 才真正保证一行不被页边界切开。
+         行内卡片用 inline-block，彼此不独立分页。 */
+      + ".tflow-row{display:block;margin:8px 0 0;"
+      +   "break-inside:avoid;page-break-inside:avoid}"
+      + ".tflow-row::after{content:'';display:block;clear:both}"
+      + ".tflow-row .tcard{display:inline-block;vertical-align:top;"
+      +   "width:calc(50% - 4px);margin:0}"
+      + ".tflow-row .tcard + .tcard{margin-left:8px}"
+      /* 单卡行占满整宽：只占左半边会在右侧留出等宽空白，读起来偏斜 */
+      + ".tflow-row-single .tcard{width:100%}"
+      + ".tflow-row:last-child{margin-bottom:14px}"
+      /* 流式卡片留出上边距并把编号气泡收进卡内：
+         ecard-no 原为 top:-6px 的绝对定位气泡，贴着行/页边界时
+         会被切掉半个；这里改为卡内 top:3px，任何分页位置都完整。 */
+      + ".tflow .tcard{padding-top:16px}"
+      + ".tflow .tcard .ecard-no{top:3px}";
 
-    return '<section class="sheet sheet-board">' +
+    /* PDF 流式批注块：每段正文后挂该段批注（两卡一行）。
+       整篇批注是文末紧凑列表（.tloose），不在此列。 */
+    var byNo = {};
+    items.forEach(function (it) { byNo[it.no] = it; });
+    /* 批注块直接拼在对应段落之后：不再统一堆到文末。
+       导出 HTML 打开时没有 extra 排版脚本兜底，堆在文末会让
+       「第 7 条批注」离它说的那段话隔了整整一页。 */
+    function flowOf(nos, pi) {
+      if (!nos.length) return "";
+      var rows = "";
+      for (var i = 0; i < nos.length; i += 2) {
+        var grp = nos.slice(i, i + 2);
+        rows += '<div class="tflow-row' + (grp.length === 1 ? " tflow-row-single" : "") + '">' +
+          grp.map(function (no) { return tcard(byNo[no]); }).join("") +
+          "</div>";
+      }
+      return '<div class="tflow" data-after-pi="' + pi + '">' + rows + "</div>";
+    }
+    var paraWithFlow = paraHtml.map(function (h, pi) {
+      return h + flowOf(paraNos[pi], pi);
+    }).join("");
+
+    return '<section class="sheet sheet-board text-sheet">' +
       '<div class="sheet-head">' +
         '<div><h2>原稿批注</h2>' +
           '<div class="sh-sub">' + esc(res.title || "作文") +
@@ -387,11 +631,122 @@
             esc(res.meta || ""),
             "全文 " + (res.wordCount || 0) + " 字"
           ].filter(Boolean).join(" · ") + "</div>" +
-          '<div class="t-body">' + paraHtml + "</div>" + looseHtml +
+          '<div class="t-body">' + paraWithFlow + looseHtml + "</div>" +
         "</div>" +
         '<div class="ecol tcol ecol-r">' + rightList.map(tcard).join("") + "</div>" +
       "</div>" +
     "</section>";
+  }
+
+  /* 汇总表里的「原句」：引句常整段上百字，一格里塞不下也读不出重点。
+     截到真正出问题的词附近一小段（前后各留 14 字），首尾加省略号。 */
+  function typoSnippet(say, a) {
+    var s = String(say || "").replace(/[\s　]+/g, " ").trim();
+    if (s.length <= 42) return s;
+    var hit = typoHit(s, a);
+    var at = hit ? hit.at : -1;
+    if (at < 0) return s.slice(0, 40) + "…";
+    var from = Math.max(0, at - 14);
+    var to = Math.min(s.length, at + (hit ? hit.len : 4) + 14);
+    return (from > 0 ? "…" : "") + s.slice(from, to) + (to < s.length ? "…" : "");
+  }
+
+  /* 错别字命中定位：模型给的引句常是整句甚至整段，
+     但真正出错的往往只有一两个字。这里从 fix / note 里提取
+     「X→Y」「X 应为 Y」「X 改成 Y」形式的错词，回到引句中定位；
+     定位不到就返回 null，调用方按整段标记处理。 */
+  function typoHit(text, a) {
+    if (!text) return null;
+    var cands = [];
+    var fix = String(a.fix || "");
+    var note = String(a.note || a.html || a.comment || "");
+    /* 「甜静」应为「恬静」 / 「X」→「Y」 / X 应为 Y */
+    var pats = [
+      /「(.{1,6})」\s*(?:→|应为|应改成|改为|改成)\s*「?(.{1,6})」?/,
+      /(.{1,6})\s*(?:→|应为|应改成|改为|改成)\s*(.{1,6})/,
+      /「(.{1,6})」/
+    ];
+    pats.forEach(function (re) {
+      var m = fix.match(re) || note.match(re);
+      if (m && m[1]) cands.push(m[1]);
+    });
+    for (var i = 0; i < cands.length; i++) {
+      var w = cands[i].replace(/[「」『』（）、，。；：\s]/g, "");
+      if (!w || w.length > 6) continue;
+      var at = text.indexOf(w);
+      if (at >= 0) return { at: at, len: w.length };
+    }
+    return null;
+  }
+
+  /* 错别字汇总块（放在「全文概览」页）：把错别字从正文旁批注里挪出来，
+     一次看完，避免十几条「应为」把最有价值的语句批注挤到次要位置。 */
+  function typoBlock(res) {
+    var anns = (res && (res.annotations || res.annos)) || [];
+    var paras = (res && (res.paragraphs || (res.essay && res.essay.paras))) || [];
+    if (Array.isArray(paras)) {
+      paras = paras.map(function (p) {
+        if (Array.isArray(p)) return p.map(function (s) { return s.t || ""; }).join("");
+        return String(p);
+      }).filter(function (t) { return t.trim(); });
+    } else {
+      paras = [];
+    }
+    var rows = [];
+    if (paras.length) {
+      var byPara = paras.map(function (text, pi) { return ZP.Render.matchMarks(text, pi, anns); });
+      byPara.forEach(function (ms, pi) {
+        var text = paras[pi] || "";
+        ms.forEach(function (m) {
+          if (m.a.type !== "red") return;
+          /* 原句优先取「模型给的引句」；没有就取实际匹配到的原文片段。
+             只写 a.sentence 时，靠 para 定位、没给引句的批注会整行空白
+             （实测汇总里只剩「→ 应用（yìng yòng）」）。 */
+          var say = (m.a.sentence || m.a.quote || "").trim();
+          if (!say && text) say = text.slice(m.start, m.end).trim();
+          rows.push({ a: m.a, sentence: typoSnippet(say, m.a) });
+        });
+      });
+      /* 定位不到的错别字也要列（没有原句时只显示说明） */
+      var located = [];
+      byPara.forEach(function (ms) { ms.forEach(function (m) { located.push(m.a); }); });
+      anns.forEach(function (a) {
+        if (a.type === "red" && located.indexOf(a) < 0) {
+          rows.push({ a: a, sentence: typoSnippet((a.sentence || a.quote || "").trim(), a) });
+        }
+      });
+    } else {
+      anns.forEach(function (a) {
+        if (a.type === "red") {
+          rows.push({ a: a, sentence: typoSnippet((a.sentence || a.quote || "").trim(), a) });
+        }
+      });
+    }
+    if (!rows.length) return "";
+
+    /* 编号与正文角标一致：正文里先是错别字、再是其余批注，
+       所以汇总表按原顺序编号即可对上（1..n）。 */
+    /* 用紧凑列表而不是 table：Chromium 打印时表格跨页会断行、
+       还会丢掉首行（实测概览页被拆成两页、第 2 页只剩表头）。
+       每条自带 break-inside:avoid，可安全跨页。 */
+    return '<div class="blk typo-blk"><div class="blk-head"><h4>错别字汇总</h4><i></i>' +
+      '<span class="meta">共 ' + rows.length + ' 处 · 原稿句中以红色角标标注</span></div>' +
+      '<div class="typo-list">' +
+        rows.map(function (r, i) {
+          var a = r.a;
+          var fixTxt = String(a.fix || "").trim();
+          return '<div class="typo-row">' +
+            '<div class="typo-hd">' +
+              '<span class="typo-no">' + (i + 1) + "</span>" +
+              (r.sentence ? '<q class="typo-say">' + esc(r.sentence) + "</q>"
+                          : '<q class="typo-say typo-say-none">原句未定位</q>') +
+              (fixTxt ? '<span class="typo-arrow">→</span>' +
+                '<span class="typo-fix">' + esc(fixTxt) + "</span>" : "") +
+              '<span class="typo-note">' + esc(a.note || a.html || a.comment || "") + "</span>" +
+            "</div>" +
+          "</div>";
+        }).join("") +
+      "</div></div>";
   }
 
   /* ============================================================
@@ -532,9 +887,32 @@
       + ".pol{background:#fff;border:1px solid #ebe5d8;border-radius:9px;padding:18px 22px;"
       +   "font-family:'Songti SC',SimSun,serif;font-size:18px;line-height:2.05;color:#2b3038;"
       +   "box-shadow:0 1px 2px rgba(60,45,25,.04)}"
-      + ".pol h6{text-align:center;font-size:15px;margin:0 0 12px;font-weight:700;letter-spacing:.04em}"
+      + ".pol h6{text-align:center;font-size:23px;margin:0 0 14px;font-weight:700;"
+      +   "letter-spacing:.05em;line-height:1.6}"
       + ".pol p{margin:0 0 7px;text-indent:2em}"
-      + ".pol p:last-child{margin-bottom:0}";
+      + ".pol p:last-child{margin-bottom:0}"
+      /* 错别字汇总：一条一块，原句（宋体）→ 应改为（红），说明在下；
+         块级 + break-inside:avoid，跨页时不拆断。 */
+      + ".typo-list{border:1px solid #ebe5d8;border-radius:9px;overflow:hidden;"
+      +   "background:#fffdf9}"
+      + ".typo-row{padding:8px 11px;border-bottom:1px solid #f2ece0;"
+      +   "break-inside:avoid;page-break-inside:avoid}"
+      + ".typo-row:last-child{border-bottom:0}"
+      + ".typo-hd{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}"
+      + ".typo-no{display:inline-block;min-width:15px;height:15px;line-height:15px;"
+      +   "text-align:center;border-radius:4px;background:#cf4436;color:#fff;"
+      +   "font-family:ui-monospace,Menlo,Consolas,monospace;font-size:9px;font-weight:700;"
+      +   "flex:0 0 auto;position:relative;top:-1px}"
+      + ".typo-say{font-family:'Songti SC',SimSun,serif;font-size:14px;color:#2b3038;"
+      +   "quotes:'「' '」'}"
+      + ".typo-arrow{color:#b9ad96;font-size:12px}"
+      + ".typo-fix{color:#a2492f;font-weight:600;font-size:13px}"
+      + ".typo-say-none{color:#a9a293;font-style:normal}"
+      + ".typo-note{flex:1 1 100%;margin:2px 0 0 22px;font-size:11.5px;line-height:1.6;"
+      +   "color:#6b7280}"
+      /* 概览页本身已接近满页：汇总块允许自然分页，
+         避免出现「上一页底部只剩两行」的碎片页。 */
+      + ".typo-blk,.typo-list{break-inside:auto}";
   }
 
   function head(titleText, subText, tagText) {
@@ -681,12 +1059,13 @@
     }
 
     return '<section class="sheet">' +
-      head("写作思路", [
+      head("写作建议", [
         esc(res.title || ""),
         (res.student && res.student !== "未署名") ? esc(res.student) : ""
       ].filter(Boolean).join("　")) +
       '<style>' + tabCss() + "</style>" +
       olHtml + issueHtml +
+      typoBlock(res) +
     "</section>";
   }
 

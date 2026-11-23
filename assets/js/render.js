@@ -13,6 +13,46 @@
   var TYPE_SHORT = { red: "错别字", amber: "润色", green: "好句", violet: "建议" };
   var TYPE_COLOR = { red: "#cf4436", amber: "#c8912a", green: "#2f8f6b", violet: "#7a5cc4" };
 
+  /* ---------------- 批注优先级 ----------------
+     学生面对一屏十几条批注常常无从下手，所以给每条判一个「要不要改」
+     的优先级，并把最该动手的几条顶到前面。
+     判据按「能不能马上改、改完有没有明显收益」排序：
+       错别字     → 必改：一次就能改对，且直接扣规范分
+       病句       → 必改：句子不通，读者会卡住
+       修改建议   → 建议改：涉及内容与结构，需要想一想
+       润色语句   → 可选：锦上添花
+       优秀好句   → 保留：不需要动，是范例
+     类型判断优先看 tag（模型会给出更细的「病句」「错别字」）。 */
+  var PRIO_ORDER = ["must", "should", "optional", "keep"];
+  var PRIO_META = {
+    must:     { label: "必改", cls: "p-must",   hint: "先改这些" },
+    should:   { label: "建议改", cls: "p-should", hint: "有余力再改" },
+    optional: { label: "可选", cls: "p-opt",    hint: "锦上添花" },
+    keep:     { label: "保留", cls: "p-keep",   hint: "不用动，是范例" }
+  };
+
+  function annPriority(a) {
+    if (!a) return "optional";
+    var tag = String(a.tag || "");
+    if (a.type === "red") return "must";
+    if (tag.indexOf("病句") >= 0) return "must";
+    if (tag.indexOf("错别字") >= 0) return "must";
+    if (a.type === "violet" || tag.indexOf("建议") >= 0) return "should";
+    if (a.type === "green" || tag.indexOf("好句") >= 0) return "keep";
+    if (a.type === "amber") return "optional";
+    return "optional";
+  }
+
+  /* 统计各类优先级条数（供筛选条与提示使用） */
+  function prioCounts(list) {
+    var c = { must: 0, should: 0, optional: 0, keep: 0 };
+    (list || []).forEach(function (a) {
+      var p = annPriority(a);
+      if (c[p] !== undefined) c[p]++;
+    });
+    return c;
+  }
+
   function fmt(n) { return (n || 0).toLocaleString("zh-CN"); }
   function esc(s) {
     return String(s == null ? "" : s)
@@ -225,22 +265,62 @@
 
       if (Array.isArray(para)) {
         para.forEach(function (sent) {
+          /* 段落是「句子数组」时，sent.a 直接把整句当标记。
+             错别字只该标出错的那几个字，这里同样走词级收窄，
+             否则一条错别字会把整句 50+ 字刷红。 */
+          if (sent.a && sent.a.type === "red" && String(sent.t || "").length > 8) {
+            var pickS = narrowTypo(String(sent.t || ""), sent.a);
+            if (pickS && pickS.len < String(sent.t).length) {
+              var preTxt = String(sent.t).slice(0, pickS.at);
+              var postTxt = String(sent.t).slice(pickS.at + pickS.len);
+              if (preTxt) {
+                var psp = document.createElement("span");
+                psp.className = "sent";
+                psp.textContent = preTxt;
+                p.appendChild(psp);
+              }
+              var wsp = document.createElement("span");
+              wsp.className = "sent a-red";
+              wsp.dataset.typo = "1";
+              wsp.textContent = pickS.word;
+              p.appendChild(wsp);
+              var wdot = document.createElement("span");
+              wdot.className = "dot-mark dot-typo red";
+              p.appendChild(wdot);
+              if (postTxt) {
+                var qsp = document.createElement("span");
+                qsp.className = "sent";
+                qsp.textContent = postTxt;
+                p.appendChild(qsp);
+              }
+              return;
+            }
+          }
           var span = document.createElement("span");
           span.className = "sent";
           span.textContent = sent.t;
           p.appendChild(span);
           if (sent.a) {
+            span.classList.add("a-" + sent.a.type);
+            if (sent.a.type === "red") {
+              /* 错别字不建卡片，只标句中 */
+              span.dataset.typo = "1";
+              var tdot = document.createElement("span");
+              tdot.className = "dot-mark dot-typo red";
+              p.insertBefore(tdot, span);
+              return;
+            }
             var idx = items.length;
             items.push({
               para: pi, type: sent.a.type, tag: sent.a.tag,
               sentence: sent.t, note: sent.a.note, fix: sent.a.fix
             });
             span.dataset.ann = idx;
-            span.classList.add("a-" + sent.a.type);
             /* 编号放在句子开头，作为定位线起点 */
             var dot = document.createElement("span");
             dot.className = "dot-mark " + sent.a.type;
             dot.textContent = idx + 1;
+            dot.dataset.ann = idx;
             p.insertBefore(dot, span);
             bindSentence(span, idx);
             bindDot(dot, idx);
@@ -251,10 +331,21 @@
            保证屏幕上的高亮位置与导出报告完全一致 */
         var built = buildMarked(p, String(para), pi, anns);
         built.items.forEach(function (it) {
+          /* 错别字：只留句中标记，序号在「错别字汇总」里统一编，
+             这里不占批注卡编号 */
+          if (it.typo) {
+            it.span.dataset.typo = "1";
+            it.dot.className = "dot-mark dot-typo " + it.item.type;
+            it.dot.textContent = "";
+            return;
+          }
           var idx = items.length;
           items.push(it.item);
           it.span.dataset.ann = idx;
           it.dot.textContent = idx + 1;
+          /* 圆点也要记编号：优先级筛选要按编号同步隐藏，
+             只藏卡片会让正文里留下一排孤立的彩色圆点（实测如此） */
+          it.dot.dataset.ann = idx;
           bindSentence(it.span, idx);
           bindDot(it.dot, idx);
         });
@@ -341,6 +432,32 @@
     return marks;
   }
 
+  /* 错别字词级收窄：模型给的引句常是整句（演示里「应运题」那条引句
+     整整 59 字），直接整句标红会像「整句都是错字」。
+     这里从 fix / note 里提取「X 应为 Y」「X→Y」的错词，回到句中定位。 */
+  function narrowTypo(text, a) {
+    if (!text || !a) return null;
+    var cands = [];
+    var fix = String(a.fix || "");
+    var note = String(a.note || a.html || a.comment || "");
+    var pats = [
+      /「(.{1,6})」\s*(?:→|应为|应改成|改为|改成)\s*「?(.{1,6})」?/,
+      /(.{1,6})\s*(?:→|应为|应改成|改为|改成)\s*(.{1,6})/,
+      /「(.{1,6})」/
+    ];
+    pats.forEach(function (re) {
+      var m = fix.match(re) || note.match(re);
+      if (m && m[1]) cands.push(m[1]);
+    });
+    for (var i = 0; i < cands.length; i++) {
+      var w = cands[i].replace(/[「」『』（）、，。；：\s]/g, "");
+      if (!w || w.length > 6) continue;
+      var at = text.indexOf(w);
+      if (at >= 0) return { at: at, len: w.length, word: w };
+    }
+    return null;
+  }
+
   /* DOM 构建层：按 marks 把段落切成 span，返回带 span/dot 的条目，
      由调用方决定编号、事件绑定（界面）或转成静态 HTML（导出）。 */
   function buildMarked(p, text, pi, anns) {
@@ -359,14 +476,44 @@
     var cursor = 0;
     marks.forEach(function (m) {
       if (m.start > cursor) plain(text.slice(cursor, m.start));
+      /* 错别字：把整句收窄到真正出错的词，只标那几个字。
+         不加这一步时，一条错别字批注会把整句 50+ 字划红（实测 59 字）。 */
+      var segTxt = text.slice(m.start, m.end);
+      if (m.a.type === "red" && segTxt.length > 8) {
+        var pick = narrowTypo(segTxt, m.a);
+        if (pick && pick.len < segTxt.length) {
+          if (pick.at > 0) plain(segTxt.slice(0, pick.at));
+          var spWord = document.createElement("span");
+          spWord.className = "sent a-red";
+          spWord.textContent = pick.word;
+          p.appendChild(spWord);
+          var dWord = document.createElement("span");
+          dWord.className = "dot-mark dot-typo red";
+          dWord.textContent = "";
+          p.appendChild(dWord);
+          if (pick.at + pick.len < segTxt.length) plain(segTxt.slice(pick.at + pick.len));
+          return;
+        }
+      }
       var span = document.createElement("span");
       span.className = "sent a-" + m.a.type;
-      span.textContent = text.slice(m.start, m.end);
+      span.textContent = segTxt;
       p.appendChild(span);
 
       var dot = document.createElement("span");
       dot.className = "dot-mark " + m.a.type;
       p.insertBefore(dot, span);
+      /* 错别字与导出报告同口径：只在句中留彩色标记，
+         不生成左右批注卡（清单集中到「写作建议」页的汇总）。
+         否则演示作文里仍会冒出「错别字」卡片，占掉最有价值的语句批注位。 */
+      if (m.a.type === "red") {
+        out.push({ span: span, dot: dot, typo: true, item: {
+          para: pi, type: m.a.type, tag: m.a.tag,
+          sentence: m.a.sentence || m.a.quote,
+          note: m.a.note || m.a.html || m.a.comment || "", fix: m.a.fix
+        }});
+        return;
+      }
       out.push({
         span: span, dot: dot,
         item: {
@@ -459,12 +606,16 @@
       var lh = lineHeightOf(sent) * (m.scale || 1);
       var firstLineY = m.top + Math.min(lh, m.h) / 2;
 
+      var prio = annPriority(item);
+      var pm = PRIO_META[prio] || PRIO_META.optional;
       var el = document.createElement("div");
-      el.className = "annot " + item.type;
+      el.className = "annot " + item.type + " " + pm.cls;
       el.dataset.ann = i;
+      el.dataset.prio = prio;
       el.innerHTML =
         '<span class="annot-no">' + (i + 1) + "</span>" +
         '<span class="annot-tag">' + esc(item.tag || TYPE_SHORT[item.type]) + "</span>" +
+        '<span class="prio-chip ' + pm.cls + '">' + pm.label + "</span>" +
         '<div class="annot-body">' + rich(item.note || "") +
         fixBlock(item, esc, rich) +
         "</div>";
@@ -498,6 +649,9 @@
       path.setAttribute("stroke", color);
       path.setAttribute("stroke-opacity", ".62");
       path.setAttribute("stroke-dasharray", "3 3");
+      /* 引线挂上批注编号：优先级筛选时要连引线一起隐藏，
+         否则卡片没了、虚线还悬在原句旁边 */
+      path.setAttribute("data-ann", i);
       svg.appendChild(path);
 
       var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -506,6 +660,7 @@
       dot.setAttribute("r", "2");
       dot.setAttribute("fill", color);
       dot.setAttribute("fill-opacity", ".85");
+      dot.setAttribute("data-ann", i);
       svg.appendChild(dot);
 
       el.addEventListener("click", function () { focusAnn(i); });
@@ -523,6 +678,169 @@
 
     /* 文本稿的批注直接以「彩色底纹 + 波浪线」标在原句上，无需荧光层；
        荧光笔只用于原稿图片（见 paintHighlights） */
+
+    /* 批注一多学生看不过来：先给出「先改哪几处」，再让他们按需筛选 */
+    refreshPrioBar(items);
+  }
+
+  /* ============================================================
+     批注优先级条：摘要 + 按级别筛选
+     ------------------------------------------------------------
+     一屏十几条批注时，学生不知道从哪下手。这里先算出「必改 2 处、
+     建议改 3 处…」，把最该动手的顶到前面，其余可一键隐藏。 */
+  var prioFilter = "all";     /* all | must | should | optional | keep */
+
+  function refreshPrioBar(items) {
+    var bar = $("#prioBar");
+    var tabs = $("#prioTabs");
+    var lead = $("#prioLead");
+    if (!bar || !tabs || !lead) return;
+
+    var list = (items || []).filter(function (x) { return x.note || x.fix || x.html; });
+    /* ★ 错别字已被移出批注卡（只在句中留角标、清单进「写作建议」页），
+       但它恰恰是最该先改的一类。这里把它补计进「必改」，
+       否则优先级条会显示「没有硬伤」，与事实相反。 */
+    var typoN = 0;
+    var annsCur = annList(S.result);
+    var parasCur = paraList(S.result);
+    if (annsCur.length) {
+      if (parasCur.length) {
+        parasCur.forEach(function (pp, pi) {
+          var tx = Array.isArray(pp) ? pp.map(function (x) { return x.t || ""; }).join("") : String(pp || "");
+          matchMarks(tx, pi, annsCur).forEach(function (m) { if (m.a.type === "red") typoN++; });
+        });
+      } else {
+        annsCur.forEach(function (a) { if (a.type === "red") typoN++; });
+      }
+    }
+    if (!list.length && !typoN) { bar.hidden = true; return; }
+
+    var c = prioCounts(list);
+    c.must += typoN;
+    /* 摘要句：直接告诉学生先动几处 */
+    var mustN = c.must, shouldN = c.should;
+    if (mustN) {
+      lead.textContent = "先改这 " + mustN + " 处" + (shouldN ? "，再处理 " + shouldN + " 处建议" : "");
+      lead.className = "prio-lead hot";
+    } else if (shouldN) {
+      lead.textContent = "先从这 " + shouldN + " 处建议改起";
+      lead.className = "prio-lead";
+    } else if (c.optional) {
+      lead.textContent = "没有硬伤，可以打磨 " + c.optional + " 处语句";
+      lead.className = "prio-lead calm";
+    } else {
+      lead.textContent = "通篇没有需要改的地方";
+      lead.className = "prio-lead calm";
+    }
+
+    /* 「全部」要把错别字也算上：它有角标、也在汇总里，
+       只报卡片数会与「必改 1」自相矛盾（7 vs 1）。 */
+    var opts = [{ k: "all", label: "全部", n: list.length + typoN }];
+    PRIO_ORDER.forEach(function (k) {
+      if (c[k]) opts.push({ k: k, label: PRIO_META[k].label, n: c[k] });
+    });
+
+    tabs.innerHTML = opts.map(function (o) {
+      var on = prioFilter === o.k ? " on" : "";
+      return '<button type="button" class="prio-tab' + on + '" data-prio="' + o.k + '">' +
+        o.label + '<b>' + o.n + "</b></button>";
+    }).join("");
+    bar.hidden = false;
+
+    /* 按钮事件只绑一次：用 onclick 覆盖，避免重复绑定 */
+    tabs.onclick = function (e) {
+      var btn = e.target.closest("[data-prio]");
+      if (!btn) return;
+      var k = btn.getAttribute("data-prio");
+      prioFilter = (prioFilter === k && k !== "all") ? "all" : k;
+      applyPrioFilter();
+      refreshPrioBar(items);
+    };
+
+    applyPrioFilter();
+  }
+
+  function countVisibleCards(paper) {
+    var n = 0;
+    paper.querySelectorAll(".annot").forEach(function (el) {
+      if (el.style.display !== "none") n++;
+    });
+    return n;
+  }
+
+  /* 按当前筛选隐藏/显示批注：卡片、引线、原句标记一起处理，
+     只藏卡片会留下孤零零的虚线和底色。 */
+  function applyPrioFilter() {
+    var paper = $("#paper");
+    if (!paper) return;
+    var keep = prioFilter;
+    paper.querySelectorAll(".annot").forEach(function (el) {
+      var p = el.getAttribute("data-prio") || "optional";
+      el.style.display = (keep === "all" || p === keep) ? "" : "none";
+    });
+    var svg = $("#leaders");
+    if (svg) {
+      svg.querySelectorAll("[data-ann]").forEach(function (n) {
+        var idx = n.getAttribute("data-ann");
+        var card = paper.querySelector('.annot[data-ann="' + idx + '"]');
+        var show = true;
+        if (card) {
+          var p2 = card.getAttribute("data-prio") || "optional";
+          show = (keep === "all" || p2 === keep);
+        }
+        n.style.display = show ? "" : "none";
+      });
+    }
+    /* 原句上的编号点与底色：按级别同步淡出，避免「字上还有标记、卡片没了」 */
+    paper.querySelectorAll(".essay-body .sent[data-ann]").forEach(function (sp) {
+      var idx2 = sp.getAttribute("data-ann");
+      var card2 = paper.querySelector('.annot[data-ann="' + idx2 + '"]');
+      var show2 = true;
+      if (card2) {
+        var p3 = card2.getAttribute("data-prio") || "optional";
+        show2 = (keep === "all" || p3 === keep);
+      }
+      sp.classList.toggle("dimmed", !show2);
+    });
+    /* 错别字没有卡片，按「原句标记」单独处理：
+       筛其它级别时淡出，筛「必改」时保持可见。 */
+    paper.querySelectorAll(".essay-body .sent[data-typo],.dot-typo").forEach(function (n) {
+      var showT = (keep === "all" || keep === "must");
+      if (n.classList.contains("sent")) {
+        n.classList.toggle("dimmed", !showT);
+        /* 只在「必改」筛选时加重，平时保持轻量下划线 */
+        n.classList.toggle("typo-focus", keep === "must");
+      } else {
+        n.style.display = showT ? "" : "none";
+      }
+    });
+
+    /* 筛「必改」时若只剩错别字（它没有卡片），纸面会显得空荡荡：
+       给一条定位指引，并让错别字标记临时加重，肉眼才找得到。 */
+    var hint = paper.querySelector(".typo-only-hint");
+    if (keep === "must" && !countVisibleCards(paper)) {
+      if (!hint) {
+        hint = document.createElement("div");
+        hint.className = "typo-only-hint";
+        hint.innerHTML = '<i></i>必改项是错别字：原文里已标红，完整清单见「写作建议」页的错别字汇总';
+        var ph = paper.querySelector(".essay-head");
+        if (ph && ph.parentNode) ph.parentNode.insertBefore(hint, ph.nextSibling);
+      }
+      hint.style.display = "";
+    } else if (hint) {
+      hint.style.display = "none";
+    }
+
+    paper.querySelectorAll(".dot-mark[data-ann]").forEach(function (d) {
+      var idx3 = d.getAttribute("data-ann");
+      var card3 = paper.querySelector('.annot[data-ann="' + idx3 + '"]');
+      var show3 = true;
+      if (card3) {
+        var p4 = card3.getAttribute("data-prio") || "optional";
+        show3 = (keep === "all" || p4 === keep);
+      }
+      d.style.display = show3 ? "" : "none";
+    });
   }
 
   /* 文本稿：定位到某条批注，同时高亮原句与卡片 */
@@ -558,7 +876,7 @@
    * 没有逐行 OCR 坐标，就按段落号把每段映射成图片上的一条横向色带，
    * 位置与两侧批注锚点一致，保证「卡片—色带—编号」三者对得上。
    */
-  function paintHighlights(anns, sp, all) {
+  function paintHighlights(anns, sp, all, anchorByAnn) {
     var list = Array.isArray(all) ? all : (anns || []);
     var layer = $("#hlLayer");
     if (!layer || !sp.h) return;
@@ -579,7 +897,18 @@
     anns.forEach(function (a, i) {
       var box = clustered ? null : a.box;
       var fbY, fbX1, fbX2;
-      if (box) {
+      /* 卡片侧已算好的锚点（绝对像素，相对纸面）：优先复用，
+         保证荧光条与批注卡引线落在同一行，不再各算一套。
+         ★ 键必须用全局序号：anchorByAnn 按 gidx 写入，
+         用本页序号 i 取值时第 2 页起全部取空、退回旧公式。 */
+      var gkS = list.indexOf(a);
+      var shared = anchorByAnn ? anchorByAnn[gkS >= 0 ? gkS : i] : undefined;
+      if (shared !== undefined) {
+        /* 换算成相对图片的百分比：sp.top 是图片顶在纸面内的坐标 */
+        fbY = Math.max(0, Math.min(100, (shared - sp.top) / (sp.h || 1) * 100));
+        fbX1 = 4; fbX2 = 96;
+        if (box) { fbX1 = box.x1; fbX2 = box.x2; }
+      } else if (box) {
         fbY = box.y; fbX1 = box.x1; fbX2 = box.x2;
       } else {
         /* 模型没给位置（或坐标聚集被整组作废）：按本页批注序号纵向均分，
@@ -606,11 +935,14 @@
       band.style.left = x1 + "%";
       band.style.width = Math.max(6, Math.min(100 - x1, x2 - x1)) + "%";
       band.title = "#" + gk2 + " " + annText(a);
-      band.dataset.ann = i;
+      /* 全局序号必须先算：下面 dataset.ann 与事件绑定都要用它，
+         写在赋值之后会因 var 提升取到 undefined，
+         导致荧光条没有 data-ann、拖拽时反查不到元素。 */
+      var gidx = gk >= 0 ? gk : i;
+      band.dataset.ann = gidx;
       band.dataset.y = y;
       band.dataset.x1 = x1;
       band.dataset.x2 = x2;
-      var gidx = gk >= 0 ? gk : i;
       band.addEventListener("click", function (e) {
         e.stopPropagation();
         /* 拖动刚结束不要误触选中 */
@@ -635,8 +967,8 @@
         var insetPct = Math.max(1.4, 7 / (sp.w || 300) * 100);
         var gpos = edge === "x1" ? Math.min(x2 - 1, x1 + insetPct) : Math.max(x1 + 1, x2 - insetPct);
         grip.style.left = gpos + "%";
-        grip.dataset.ann = i;
-        grip.dataset.owner = i;
+        grip.dataset.ann = gidx;
+        grip.dataset.owner = gidx;
         grip.dataset.edge = edge;
         grip.dataset.y = y;
         grip.dataset.x1 = x1;
@@ -666,7 +998,7 @@
       ntY = Math.max(0, Math.min(99, ntY));
       num.style.left = lx + "%";
       num.style.top = ntY + "%";
-      num.dataset.ann = i;
+      num.dataset.ann = gidx;
       num.title = "#" + (gk2) + " " + annText(a);
       num.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -822,12 +1154,24 @@
     var leftItems = anns.filter(function (_, k) { return k % 2 === 0; });
     var rightItems = anns.filter(function (_, k) { return k % 2 === 1; });
 
-    function slotY(list, idx) {
+    /* 锚点纵向位置：一律优先按「批注所属段落」定位。
+       此前多条的走「同栏均分」，同一栏两条直接被推到页首 6% 和页尾 94%，
+       批注条离它说的那句话隔了半页——这正是「位置还是不对」的来源。
+       均分只作为「拿不到段落信息」时的兜底。 */
+    function slotY(list, idx, item) {
       var n = Math.max(1, list.length);
-      /* 单条时也放在段落位置，多条时按序号均分整幅图片高度 */
+      var paraOf = function (it) {
+        var p = it && typeof it.para === "number" ? it.para : -1;
+        return p >= 0 && p < totalPara ? p : -1;
+      };
+      var p = paraOf(item);
+      if (p >= 0) {
+        /* 段落中心：0.5/总段数 会落在两段之间，用 (p+0.5)/totalPara 居中 */
+        return sp.top + sp.h * Math.max(0.06, Math.min(0.94, (p + 0.5) / totalPara));
+      }
       if (n === 1) {
-        var p = Math.max(0, Math.min(totalPara - 1, list[0].para | 0));
-        return sp.top + sp.h * Math.max(0.08, Math.min(0.92, (p + 0.5) / totalPara));
+        var p0 = Math.max(0, Math.min(totalPara - 1, (list[0] && list[0].para) | 0));
+        return sp.top + sp.h * Math.max(0.08, Math.min(0.92, (p0 + 0.5) / totalPara));
       }
       var usableTop = sp.top + sp.h * 0.06;
       var usableH = sp.h * 0.88;
@@ -844,17 +1188,28 @@
       return k >= 0 ? k : 0;
     }
 
+    /* ★ 锚点共用：卡片位置与图片荧光条必须落在同一纵向坐标。
+       此前卡片按「左右分栏各自均分」，荧光条按「本页全部批注均分」，
+       两套公式不同，必有一条对不上原文（第 2 页起尤其明显）。
+       这里把算好的 anchorY 存进批注对象，paintHighlights 直接复用。 */
+    var anchorByAnn = {};
+
     anns.forEach(function (item, i) {
       var goLeft = i % 2 === 0;
-      var anchorY = goLeft ? slotY(leftItems, leftSeen++) : slotY(rightItems, rightSeen++);
+      var anchorY = goLeft ? slotY(leftItems, leftSeen++, item) : slotY(rightItems, rightSeen++, item);
       var gno = gi(item) + 1;
+      anchorByAnn[gi(item)] = anchorY;
 
+      var prio = annPriority(item);
+      var pm = PRIO_META[prio] || PRIO_META.optional;
       var el = document.createElement("div");
-      el.className = "annot " + item.type;
+      el.className = "annot " + item.type + " " + pm.cls;
       el.dataset.ann = gi(item);
+      el.dataset.prio = prio;
       el.innerHTML =
         '<span class="annot-no">' + gno + "</span>" +
         '<span class="annot-tag">' + esc(item.tag || TYPE_SHORT[item.type]) + "</span>" +
+        '<span class="prio-chip ' + pm.cls + '">' + pm.label + "</span>" +
         '<div class="annot-body">' + rich(item.note || "") +
         fixBlock(item, esc, rich) +
         "</div>";
@@ -932,8 +1287,9 @@
 
     syncLeaderViewBox(paper, svg);
 
-    /* 原稿图片上同步绘制荧光笔（与批注锚点同一套纵向位置） */
-    paintHighlights(anns, sp, all);
+    /* 原稿图片上同步绘制荧光笔：直接把卡片侧的锚点按图片坐标换算，
+       保证每一条荧光条都落在它那张卡片引线的落点上。 */
+    paintHighlights(anns, sp, all, anchorByAnn);
   }
 
   /* ============================================================
@@ -1461,6 +1817,71 @@
      概览页不再重复罗列。 */
 
   /* ---- Tab 2 ---- */
+  /* 错别字汇总（界面版）：与 report-export.js 的 typoBlock 同数据、同口径。
+     错别字在原稿页只留词级角标，完整清单集中列在这里。 */
+  /* 汇总「原句」截断：与 report-export.js 的 typoSnippet 同口径。
+     引句常整段上百字，一格塞不下也读不出重点。 */
+  function typoSnippet(say, a) {
+    var s = String(say || "").replace(/[\s　]+/g, " ").trim();
+    if (s.length <= 42) return s;
+    var w = String(a && a.fix || "").replace(/[「」『』（）、，。；：\s]/g, "");
+    var at = w && w.length <= 6 ? s.indexOf(w) : -1;
+    if (at < 0) return s.slice(0, 40) + "…";
+    var from = Math.max(0, at - 14);
+    var to = Math.min(s.length, at + w.length + 14);
+    return (from > 0 ? "…" : "") + s.slice(from, to) + (to < s.length ? "…" : "");
+  }
+
+  function renderTypoBlock(r) {
+    var anns = annList(r);
+    var paras = paraList(r);
+    var texts = paras.map(function (p) {
+      return Array.isArray(p) ? p.map(function (x) { return x.t || ""; }).join("") : String(p || "");
+    });
+    var rows = [];
+    if (texts.length) {
+      var located = [];
+      texts.forEach(function (t, pi) {
+        matchMarks(t, pi, anns).forEach(function (m) {
+          located.push(m.a);
+          if (m.a.type !== "red") return;
+          var say = String(m.a.sentence || m.a.quote || "").trim();
+          if (!say && t) say = t.slice(m.start, m.end).trim();
+          rows.push({ a: m.a, say: say });
+        });
+      });
+      anns.forEach(function (a) {
+        if (a.type === "red" && located.indexOf(a) < 0) {
+          rows.push({ a: a, say: String(a.sentence || a.quote || "").trim() });
+        }
+      });
+    } else {
+      anns.forEach(function (a) {
+        if (a.type === "red") rows.push({ a: a, say: String(a.sentence || a.quote || "").trim() });
+      });
+    }
+    if (!rows.length) return "";
+
+    return '<div class="blk"><div class="blk-head"><h4>错别字汇总</h4><i></i>' +
+      '<span class="blk-meta">共 ' + rows.length + ' 处 · 原稿句中以红色角标标注</span></div>' +
+      '<div class="typo-list">' +
+        rows.map(function (r, i) {
+          var a = r.a;
+          var fixTxt = String(a.fix || "").trim();
+          var say = typoSnippet(r.say !== undefined ? r.say : String(a.sentence || a.quote || "").trim(), a);
+          return '<div class="typo-row">' +
+            '<div class="typo-hd">' +
+              '<span class="typo-no">' + (i + 1) + "</span>" +
+              (say ? '<q class="typo-say">' + esc(say) + "</q>"
+                   : '<q class="typo-say typo-say-none">原句未定位</q>') +
+              (fixTxt ? '<span class="typo-arrow">→</span><span class="typo-fix">' + esc(fixTxt) + "</span>" : "") +
+              '<span class="typo-note">' + rich(a.note || a.html || a.comment || "") + "</span>" +
+            "</div>" +
+          "</div>";
+        }).join("") +
+      "</div></div>";
+  }
+
   function renderOutline(r) {
     /* issues 为后加字段：旧报告没有，缺失时整块不渲染 */
     var o = r.outline || {};
@@ -1528,8 +1949,11 @@
       "</div>";
     }
 
+    /* ---- 错别字汇总：与导出报告同一份数据、同一套对齐规则 ---- */
+    html += renderTypoBlock(r);
+
     if (!html) {
-      html = '<div class="blk"><div class="comment-card overall-text">本次未生成写作思路，可点击「开始 AI 批改」重新生成。</div></div>';
+      html = '<div class="blk"><div class="comment-card overall-text">本次未生成写作建议，可点击「开始 AI 批改」重新生成。</div></div>';
     }
 
     $("#panelOutline").innerHTML = html;

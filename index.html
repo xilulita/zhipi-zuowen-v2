@@ -6,8 +6,8 @@
 <title>笔墨生香 · AI 批改工作台</title>
 <meta name="description" content="笔墨生香：面向小学高年级与初中的 AI 作文批改工作台，四维评分、双侧批注、升格范文与小练笔。" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />
-<link rel="stylesheet" href="assets/css/base.css?v=v152" />
-<link rel="stylesheet" href="assets/css/app.css?v=v152" />
+<link rel="stylesheet" href="assets/css/base.css?v=v160" />
+<link rel="stylesheet" href="assets/css/app.css?v=v160" />
 </head>
 <body>
 <div class="splash" id="splash" aria-hidden="true">
@@ -288,6 +288,11 @@
 
     <div class="stage-scroll" id="stageScroll">
       <div class="desk">
+        <!-- 批注优先级筛选：批注一多学生看不过来，这里先给出「先改哪些」 -->
+        <div class="prio-bar" id="prioBar" hidden>
+          <span class="prio-lead" id="prioLead">先改这 2 处</span>
+          <div class="prio-tabs" id="prioTabs"></div>
+        </div>
         <div class="paper" id="paper">
           <svg class="leaders" id="leaders" aria-hidden="true"></svg>
           <div class="paper-inner" id="paperInner">
@@ -399,7 +404,7 @@
 
         <nav class="tabs" id="tabs">
           <button class="tab active" data-tab="overview" type="button">全文概览</button>
-          <button class="tab" data-tab="outline" type="button">写作思路</button>
+          <button class="tab" data-tab="outline" type="button">写作建议</button>
           <button class="tab" data-tab="drill" type="button">小练笔</button>
           <button class="tab" data-tab="polished" type="button">润色后文章</button>
         </nav>
@@ -454,13 +459,13 @@
 
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="assets/js/config.js?v=v152"></script>
-<script src="assets/js/demo.js?v=v152"></script>
-<script src="assets/js/ai.js?v=v152"></script>
-<script src="assets/js/render.js?v=v152"></script>
-<script src="assets/js/report-export.js?v=v152"></script>
-<script src="assets/js/history.js?v=v152"></script>
-<script src="assets/js/notice.js?v=v152"></script>
-<script src="assets/js/app.js?v=v152"></script>
+<script src="assets/js/config.js?v=v160"></script>
+<script src="assets/js/demo.js?v=v160"></script>
+<script src="assets/js/ai.js?v=v160"></script>
+<script src="assets/js/render.js?v=v160"></script>
+<script src="assets/js/report-export.js?v=v160"></script>
+<script src="assets/js/history.js?v=v160"></script>
+<script src="assets/js/notice.js?v=v160"></script>
+<script src="assets/js/app.js?v=v160"></script>
 </body>
 </html>

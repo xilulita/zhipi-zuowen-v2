@@ -73,6 +73,9 @@
     bd.style.minHeight = '';
     var H = sheet.offsetHeight;
     if (!H) return;
+    /* 纸面高度 = 正文自然高度。批注列只向两侧延伸，不反向拉长纸面：
+       此前 col 取 max(H, 卡片总高) 再配合 align-items:stretch，
+       会把纸面一起撑到 3000+px，正文只占顶上 1/4，页面大面积空白。 */
     var maxCol = H, GAPMIN = 10, GAPMAX = 14;
     bd.querySelectorAll('.tcol').forEach(function (col) {
       col.style.height = '';
@@ -84,7 +87,6 @@
         var no = c.getAttribute('data-tno');
         var sent = no ? sheet.querySelector('.tsent[data-tno="' + no + '"]') : null;
         if (sent) return topIn(sent, sheet) + sent.offsetHeight / 2 - c.offsetHeight / 2;
-        /* 整篇批注（无对应句子）：贴到正文末尾附近 */
         return H - c.offsetHeight - 6;
       });
       var r = stack(cs, H, GAPMIN, GAPMAX, want);
@@ -94,10 +96,10 @@
       col.style.minHeight = ch + 'px';
       if (ch > maxCol) maxCol = ch;
     });
+    /* 纸面钉住自然高度（不随批注列变高）；白板高度取两者较大值，
+       以便卡片多时整块仍被完整包住、不被下一段压过来。 */
+    sheet.style.height = H + 'px';
     bd.style.minHeight = Math.max(H, maxCol) + 'px';
-    /* 白板自身高度也要撑到批注延伸后的实际高度：
-       否则 section 量高只按正文纸面算，PDF 整页适配会漏算卡片，
-       打印时卡片溢出被拆到下一页。 */
     bd.style.height = Math.max(H, maxCol) + 'px';
     /* 排版完成标记：供一键导出 PDF 等待布局就绪 */
     bd.setAttribute('data-fixed', '1');
@@ -125,7 +127,9 @@
   var PDF_SW = 780;           /* PDF 图片列基准宽（重排用） */
   var PDF_CW = 150;           /* PDF 批注卡列宽（容纳大字号） */
   var PDF_GP = 12;            /* PDF 栏间距 */
-  var PDF_ECFS = 17;          /* PDF 批注卡正文字号（独立，大于报告正文） */
+  /* 批注卡字号比正文小一号，形成「原文大、批注小」的层次：
+     正文 19/17.5/16.5/15.5/14.5，批注 16.5/15/14.5/13.5/12.5，各档差 2.5px */
+  var PDF_ECFS = 16.5;        /* PDF 批注卡正文字号（比正文小一号） */
   var PDF_TFS = 19;           /* PDF 原稿作文字号（文本板独立） */
 
   function fitBoards() {
@@ -157,12 +161,52 @@
         bd.style.minHeight = newH + 'px';
         fixImage(bd);
       } else {
-        fixText(bd);
+        /* 文本板 PDF 流式重排：把批注块插到对应段落之后，
+           正文全宽 + 批注两卡一行，自然分页、字号正常、无大片空白。
+           （三栏绝对定位在批注多时会把整板撑得极高，整页适配缩到 3pt 字） */
+        var body = bd.querySelector('.t-body');
+        if (body) {
+          bd.querySelectorAll('.tflow').forEach(function (fl) {
+            var pi = parseInt(fl.getAttribute('data-after-pi'), 10);
+            if (pi >= 0) {
+              var p = body.querySelector('p[data-pi="' + pi + '"]');
+              if (p && p.nextSibling !== fl) p.parentNode.insertBefore(fl, p.nextSibling);
+            } else {
+              body.appendChild(fl);   /* 整篇批注挂文末 */
+            }
+          });
+          /* 整篇批注（.tloose）保留：流式下它就是正文末尾的紧凑附注，
+             没有卡片副本，无需隐藏。 */
+        }
+        /* 关键：清掉首次排版（非 PDF 三栏模式）写死的固定高度。
+           否则 tsheet 被 align-items:stretch 撑成旧高度，流式正文
+           溢出纸面、末尾批注块压到下一张 sheet 的标题上。 */
+        bd.style.height = '';
+        bd.style.minHeight = '';
+        var ts = bd.querySelector('.tsheet');
+        if (ts) { ts.style.height = ''; ts.style.minHeight = ''; }
+        /* 流式板不做整页 transform 缩放（理由见下方第二遍注释）：
+           字号在第二遍按页数与末页填充率逐档挑选，最低仍有 13.5px，
+           远高于旧方案整页缩放后的 3pt。 */
+        var w0 = bd.offsetWidth, h0 = sh.offsetHeight;
+        if (w0 > maxBoardW) maxBoardW = w0;
+        boards.push({ sh: sh, bd: bd, w: w0, h: h0, flow: true, tbody: tbody });
+        return;
       }
       var w = bd.offsetWidth, h = sh.offsetHeight;
       if (w > maxBoardW) maxBoardW = w;
       boards.push({ sh: sh, bd: bd, w: w, h: h });
     });
+    /* 报告四页也纳入适配：此前只遍历原稿白板，概览页加入错别字汇总后
+       轻微溢出就被拆成「上一页 96% + 本页两行」的碎片页。 */
+    document.querySelectorAll('.doc .sheet').forEach(function (sh) {
+      if (sh.classList.contains('sheet-board')) return;
+      sh.style.transform = '';
+      sh.style.transformOrigin = '';
+      sh.style.marginBottom = '';
+      boards.push({ sh: sh, normal: true, h: sh.offsetHeight });
+    });
+
     /* 文档宽跟随最宽白板（原始宽）：主进程 CDP 视口=文档宽，
        打印管线按视口把整页缩到页宽，白板恰好铺满页宽、两侧批注不越界。
        原稿页不做放大（MAX_FIT=1.0）：放大需同步扩视口，易与分页管线
@@ -171,31 +215,113 @@
     var doc = document.querySelector('.doc');
     var docW = Math.max(1032, maxBoardW);
     if (doc && maxBoardW > 1032) doc.style.minWidth = maxBoardW + 'px';
-    var viewportScale = PAGE_W_PX / docW;
+    /* 真实打印比例：printToPDF 按「可印区宽度 / 文档宽」缩放。
+       此前用 PAGE_W_PX(733)/docW 得到 0.71，比实际的 0.534 偏大 33%，
+       于是「可用高度」被高估（1368px 恰好等于估出来的上限），
+       所有超高页都判定为「刚好放得下」，永远不触发压缩与分页修正。 */
+    var viewportScale = (PAGE_W_PX - 40) / docW;
 
-    /* 第二遍：超高页整体缩小防拆（最终高 = h × fit × viewportScale ≤ 可印高）。
-       transform 内联写入，margin-bottom 补偿占位差。 */
+    /* 第二遍：处理超高页。
+       · 图片白板：整体 transform 缩小防拆（transform 内联写入，
+         margin-bottom 补偿占位差），保证三栏完整落在一页内。
+       · 文本板（flow）：不能靠 transform——它不改变布局高度，
+         视觉压小了分页仍按原高度拆。改为逐档收字号减少页数。 */
     boards.forEach(function (b) {
       if (!b.h) return;
+      if (b.normal) {
+        /* 报告页轻微溢出（≥0.90）用 zoom 压进一页。
+           不能用 transform：它只改绘制、不改布局高度，分页仍按原高度切，
+           结果就是「上一页占满 + 下一页只剩一行」的碎片页（实测概览页
+           加了错别字汇总后必然出现）。zoom 同时改布局与绘制。 */
+        var availN = (PAGE_H_PX - HEAD_RESERVE) / viewportScale;
+        var fitN = availN / b.h;
+        /* 0.85：错别字汇总并入「写作建议」后该页常到 0.88 左右，
+           阈值放 0.90 会漏掉这类轻微溢出、退回碎片页。 */
+        if (fitN < 1.0 && fitN >= 0.85) {
+          b.sh.style.zoom = fitN.toFixed(4);
+        } else if (fitN < 0.85 && b.sh.previousElementSibling &&
+                   b.sh.previousElementSibling.classList.contains('sheet')) {
+          /* 溢出太多不强缩（会看不清），让本页从新页开始 */
+          b.sh.style.setProperty('break-before', 'page');
+        }
+        return;
+      }
       var reserve = HEAD_RESERVE;
       var prev = b.sh.previousElementSibling;
-      if (!prev || !prev.classList.contains('sheet')) {
-        var dh = document.querySelector('.doc-head');
+      var dh = document.querySelector('.doc-head');
+      /* doc-head 已并入第一张 sheet 时，其高度已计入 b.h，不能再重复预留 */
+      if (b.sh.contains(dh)) {
+        reserve = 24;
+      } else if (!prev || !prev.classList.contains('sheet')) {
         if (dh) reserve += dh.offsetHeight + 12;
       }
       var target = PAGE_H_PX - reserve;
+
+      if (b.flow) {
+        /* 流式文本板：按「正文 + 批注块」自然分页。
+           目标不是死压一页（批注多时会把字缩到看不清），而是
+           ① 在字号仍可读的前提下尽量减少页数；② 让末页不留大片空白。
+           做法：逐档试字号（同时收紧行距），取「页数最少、字号最大」的那一档。
+           availPx 已换算到文档坐标系，与 b.sh.offsetHeight 同一口径。 */
+        var availPx = target / viewportScale - 70;   /* 70px 留给分页避让余量 */
+        if (availPx < 400) availPx = 400;
+        var bd = b.bd, body = b.tbody;
+        /* 每档「正文 / 批注 / 行距」：批注始终比正文小 2.5px，
+           靠字号差把批注与原文分开；字号下限 12.5px（换算约 9pt，仍可读）。 */
+        var steps = [
+          [19, 16.5, 2.05],
+          [17.5, 15, 2.0],
+          [16.5, 14, 1.95],
+          [15.5, 13, 1.9],
+          [14.5, 12.5, 1.85]
+        ];
+        var best = null;
+        for (var si = 0; si < steps.length; si++) {
+          var tfs = steps[si][0], ecfs = steps[si][1], lh = steps[si][2];
+          if (body) { body.style.fontSize = tfs + "px"; body.style.lineHeight = lh; }
+          bd.style.setProperty("--ecfs", ecfs + "px");
+          var hh = b.sh.offsetHeight;
+          var pages = Math.ceil(hh / availPx);
+          /* 末页填充率：越接近 1 越好，低于 0.45 说明那一页几乎是空的 */
+          var lastFill = (hh - (pages - 1) * availPx) / availPx;
+          if (!best || pages < best.pages ||
+              (pages === best.pages && lastFill > best.fill)) {
+            best = { pages: pages, h: hh, fill: lastFill, tfs: tfs, ecfs: ecfs, lh: lh };
+          }
+          /* 首个能把页数压到 1 的档位即最优（字号只会更小，无需再试） */
+          if (pages === 1) break;
+        }
+        if (body) { body.style.fontSize = best.tfs + "px"; body.style.lineHeight = best.lh; }
+        bd.style.setProperty("--ecfs", best.ecfs + "px");
+        b.h = b.sh.offsetHeight;
+        return;
+      }
+
       var fit = target / (b.h * viewportScale);
       if (fit > MAX_FIT) fit = MAX_FIT;
-      if (fit < 0.98) {
+      /* 轻微溢出（≥0.80）整体缩放收进一页，避免「上一页占用 96%、
+         本页只有两行」的碎片页；溢出更多时保持自然分页，不强缩。 */
+      if (fit < 0.98 && fit >= 0.80) {
         b.sh.style.transform = 'scale(' + fit.toFixed(4) + ')';
         b.sh.style.transformOrigin = 'top center';
         b.sh.style.marginBottom = Math.round(b.h * (fit - 1)) + 'px';
+      } else if (fit < 0.98 && fit < 0.80 && b.sh.previousElementSibling &&
+                 b.sh.previousElementSibling.classList.contains('sheet')) {
+        /* 无法收进一页：让本页从新页开始，别在上一页尾部留残行 */
+        b.sh.style.setProperty('break-before', 'page');
       }
     });
   }
   /* 供 PDF 主进程在 printToPDF 前调用：进入 PDF 模式并重新适配 */
   window.__zpPdfFit = function () {
     document.documentElement.classList.add('pdf-export');
+    /* 总标题并入第一张 sheet：避免 doc-head 独占一页（94% 空白）。
+       把 doc-head 移到第一个 sheet 的 sheet-head 之前。 */
+    var dh = document.querySelector('.doc-head');
+    var first = document.querySelector('.doc .sheet');
+    if (dh && first && dh.parentNode !== first) {
+      first.insertBefore(dh, first.firstChild);
+    }
     fitBoards();
     return true;
   };
